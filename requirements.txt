@@ -1,0 +1,27 @@
+# cad-agent —— 线稿图 -> DXF 多Agent协同生成系统
+# 环境：Windows + Python 3.14.4（实测通过）
+# 安装：.venv\Scripts\python.exe -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# --- 图像处理 / 矢量化 ---
+numpy==2.5.3
+opencv-python==5.0.0.93
+opencv-contrib-python==5.0.0.93
+scikit-image==0.26.0
+scipy==1.18.1
+pillow==12.3.0
+
+# --- CAD 生成与渲染 ---
+ezdxf==1.4.4
+matplotlib==3.11.2
+
+# --- OCR ---
+onnxruntime==1.30.0
+rapidocr-onnxruntime==1.2.3
+shapely==2.1.2
+pyclipper==1.4.0
+
+# --- 多Agent 编排 ---
+langgraph==1.2.11
+
+# --- 网络（调用 VLM / LLM API）---
+requests==2.34.2

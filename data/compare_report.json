@@ -1,0 +1,317 @@
+{
+  "n": 10,
+  "baseline_mean": {
+    "iou": 0.9999100000000001,
+    "dice": 0.9999600000000001,
+    "ssim": 0.8027799999999999,
+    "chamfer_px": 0.0509
+  },
+  "agent_mean": {
+    "iou": 0.9999100000000001,
+    "dice": 0.9999600000000001,
+    "ssim": 0.82534,
+    "chamfer_px": 0.0481
+  },
+  "rows": [
+    {
+      "sample": "000",
+      "baseline": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.7592,
+        "chamfer_px": 0.038,
+        "ink_ratio_pred": 0.97052,
+        "ink_ratio_gt": 0.95541
+      },
+      "agent": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8986,
+        "chamfer_px": 0.022,
+        "ink_ratio_pred": 0.9861,
+        "ink_ratio_gt": 0.95606
+      },
+      "base_counts": {
+        "line": 14,
+        "circle": 7,
+        "total": 21
+      },
+      "agent_counts": {
+        "line": 15,
+        "circle": 2,
+        "total": 17
+      },
+      "gt_total": 8,
+      "rounds": 3
+    },
+    {
+      "sample": "001",
+      "baseline": {
+        "iou": 0.9999,
+        "dice": 0.9999,
+        "ssim": 0.7639,
+        "chamfer_px": 0.212,
+        "ink_ratio_pred": 0.99113,
+        "ink_ratio_gt": 0.58282
+      },
+      "agent": {
+        "iou": 0.9999,
+        "dice": 0.9999,
+        "ssim": 0.7639,
+        "chamfer_px": 0.212,
+        "ink_ratio_pred": 0.99113,
+        "ink_ratio_gt": 0.58282
+      },
+      "base_counts": {
+        "line": 11,
+        "total": 11
+      },
+      "agent_counts": {
+        "line": 11,
+        "total": 11
+      },
+      "gt_total": 10,
+      "rounds": 4
+    },
+    {
+      "sample": "002",
+      "baseline": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.831,
+        "chamfer_px": 0.007,
+        "ink_ratio_pred": 0.99502,
+        "ink_ratio_gt": 0.98691
+      },
+      "agent": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.831,
+        "chamfer_px": 0.007,
+        "ink_ratio_pred": 0.99502,
+        "ink_ratio_gt": 0.98691
+      },
+      "base_counts": {
+        "line": 10,
+        "total": 10
+      },
+      "agent_counts": {
+        "line": 10,
+        "total": 10
+      },
+      "gt_total": 7,
+      "rounds": 4
+    },
+    {
+      "sample": "003",
+      "baseline": {
+        "iou": 0.9995,
+        "dice": 0.9998,
+        "ssim": 0.8134,
+        "chamfer_px": 0.008,
+        "ink_ratio_pred": 0.99152,
+        "ink_ratio_gt": 0.98461
+      },
+      "agent": {
+        "iou": 0.9995,
+        "dice": 0.9998,
+        "ssim": 0.8232,
+        "chamfer_px": 0.007,
+        "ink_ratio_pred": 0.99354,
+        "ink_ratio_gt": 0.98461
+      },
+      "base_counts": {
+        "line": 14,
+        "circle": 2,
+        "total": 16
+      },
+      "agent_counts": {
+        "line": 11,
+        "circle": 1,
+        "total": 12
+      },
+      "gt_total": 6,
+      "rounds": 4
+    },
+    {
+      "sample": "004",
+      "baseline": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8703,
+        "chamfer_px": 0.015,
+        "ink_ratio_pred": 0.99232,
+        "ink_ratio_gt": 0.97878
+      },
+      "agent": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8703,
+        "chamfer_px": 0.015,
+        "ink_ratio_pred": 0.99232,
+        "ink_ratio_gt": 0.97878
+      },
+      "base_counts": {
+        "line": 14,
+        "total": 14
+      },
+      "agent_counts": {
+        "line": 14,
+        "total": 14
+      },
+      "gt_total": 7,
+      "rounds": 2
+    },
+    {
+      "sample": "005",
+      "baseline": {
+        "iou": 0.9999,
+        "dice": 1.0,
+        "ssim": 0.8295,
+        "chamfer_px": 0.019,
+        "ink_ratio_pred": 0.98222,
+        "ink_ratio_gt": 0.97212
+      },
+      "agent": {
+        "iou": 0.9999,
+        "dice": 1.0,
+        "ssim": 0.8528,
+        "chamfer_px": 0.014,
+        "ink_ratio_pred": 0.98548,
+        "ink_ratio_gt": 0.97216
+      },
+      "base_counts": {
+        "line": 31,
+        "circle": 3,
+        "total": 34
+      },
+      "agent_counts": {
+        "line": 27,
+        "circle": 1,
+        "total": 28
+      },
+      "gt_total": 10,
+      "rounds": 2
+    },
+    {
+      "sample": "006",
+      "baseline": {
+        "iou": 0.9998,
+        "dice": 0.9999,
+        "ssim": 0.7432,
+        "chamfer_px": 0.028,
+        "ink_ratio_pred": 0.97427,
+        "ink_ratio_gt": 0.96183
+      },
+      "agent": {
+        "iou": 0.9998,
+        "dice": 0.9999,
+        "ssim": 0.7963,
+        "chamfer_px": 0.022,
+        "ink_ratio_pred": 0.98496,
+        "ink_ratio_gt": 0.9614
+      },
+      "base_counts": {
+        "line": 24,
+        "circle": 5,
+        "total": 29
+      },
+      "agent_counts": {
+        "line": 21,
+        "circle": 1,
+        "total": 22
+      },
+      "gt_total": 12,
+      "rounds": 4
+    },
+    {
+      "sample": "007",
+      "baseline": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.7531,
+        "chamfer_px": 0.014,
+        "ink_ratio_pred": 0.98706,
+        "ink_ratio_gt": 0.97848
+      },
+      "agent": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.7531,
+        "chamfer_px": 0.014,
+        "ink_ratio_pred": 0.98706,
+        "ink_ratio_gt": 0.97848
+      },
+      "base_counts": {
+        "line": 22,
+        "circle": 2,
+        "total": 24
+      },
+      "agent_counts": {
+        "line": 22,
+        "circle": 2,
+        "total": 24
+      },
+      "gt_total": 8,
+      "rounds": 4
+    },
+    {
+      "sample": "008",
+      "baseline": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8254,
+        "chamfer_px": 0.153,
+        "ink_ratio_pred": 0.9928,
+        "ink_ratio_gt": 0.69368
+      },
+      "agent": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8254,
+        "chamfer_px": 0.153,
+        "ink_ratio_pred": 0.9928,
+        "ink_ratio_gt": 0.69368
+      },
+      "base_counts": {
+        "line": 9,
+        "total": 9
+      },
+      "agent_counts": {
+        "line": 9,
+        "total": 9
+      },
+      "gt_total": 6,
+      "rounds": 4
+    },
+    {
+      "sample": "009",
+      "baseline": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8388,
+        "chamfer_px": 0.015,
+        "ink_ratio_pred": 0.98854,
+        "ink_ratio_gt": 0.97612
+      },
+      "agent": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8388,
+        "chamfer_px": 0.015,
+        "ink_ratio_pred": 0.98854,
+        "ink_ratio_gt": 0.97612
+      },
+      "base_counts": {
+        "line": 14,
+        "total": 14
+      },
+      "agent_counts": {
+        "line": 14,
+        "total": 14
+      },
+      "gt_total": 9,
+      "rounds": 1
+    }
+  ]
+}

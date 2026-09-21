@@ -1,0 +1,22 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- 密钥（绝不提交）---
+.env
+
+# --- 生成物 / 缓存 ---
+data/tmp/
+data/rockery/Output/
+data/synth/
+demo_out/
+out/
+third_party/Image2CAD/TestData/Output/
+
+# --- 编辑器 / 系统 ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

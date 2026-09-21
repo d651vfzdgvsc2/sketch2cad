@@ -1,0 +1,128 @@
+{
+  "n_samples": 5,
+  "mean": {
+    "iou": 0.9999,
+    "dice": 1.0,
+    "ssim": 0.8082,
+    "chamfer_px": 0.0562
+  },
+  "samples": [
+    {
+      "sample": "000",
+      "metrics": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.7492,
+        "chamfer_px": 0.039,
+        "ink_ratio_pred": 0.96933,
+        "ink_ratio_gt": 0.9566
+      },
+      "gt_counts": {
+        "polyline": 3,
+        "line": 2,
+        "circle": 3
+      },
+      "pred_counts": {
+        "line": 19,
+        "circle": 6
+      },
+      "n_entities": {
+        "gt": 8,
+        "pred": 25
+      }
+    },
+    {
+      "sample": "001",
+      "metrics": {
+        "iou": 0.9999,
+        "dice": 1.0,
+        "ssim": 0.7659,
+        "chamfer_px": 0.212,
+        "ink_ratio_pred": 0.99115,
+        "ink_ratio_gt": 0.5827
+      },
+      "gt_counts": {
+        "polyline": 3,
+        "line": 5,
+        "circle": 2
+      },
+      "pred_counts": {
+        "line": 11
+      },
+      "n_entities": {
+        "gt": 10,
+        "pred": 11
+      }
+    },
+    {
+      "sample": "002",
+      "metrics": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8277,
+        "chamfer_px": 0.008,
+        "ink_ratio_pred": 0.99505,
+        "ink_ratio_gt": 0.98687
+      },
+      "gt_counts": {
+        "polyline": 2,
+        "line": 3,
+        "circle": 2
+      },
+      "pred_counts": {
+        "line": 10
+      },
+      "n_entities": {
+        "gt": 7,
+        "pred": 10
+      }
+    },
+    {
+      "sample": "003",
+      "metrics": {
+        "iou": 0.9995,
+        "dice": 0.9998,
+        "ssim": 0.8247,
+        "chamfer_px": 0.007,
+        "ink_ratio_pred": 0.99365,
+        "ink_ratio_gt": 0.9845
+      },
+      "gt_counts": {
+        "polyline": 2,
+        "line": 3,
+        "circle": 1
+      },
+      "pred_counts": {
+        "line": 12,
+        "circle": 1
+      },
+      "n_entities": {
+        "gt": 6,
+        "pred": 13
+      }
+    },
+    {
+      "sample": "004",
+      "metrics": {
+        "iou": 1.0,
+        "dice": 1.0,
+        "ssim": 0.8736,
+        "chamfer_px": 0.015,
+        "ink_ratio_pred": 0.99278,
+        "ink_ratio_gt": 0.9786
+      },
+      "gt_counts": {
+        "polyline": 3,
+        "line": 2,
+        "circle": 2
+      },
+      "pred_counts": {
+        "line": 16
+      },
+      "n_entities": {
+        "gt": 7,
+        "pred": 16
+      }
+    }
+  ]
+}

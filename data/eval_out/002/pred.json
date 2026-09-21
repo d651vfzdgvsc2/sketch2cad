@@ -1,0 +1,235 @@
+{
+ "width": 462.0,
+ "height": 480.0,
+ "layers": [
+  {
+   "name": "outline",
+   "color": 7
+  }
+ ],
+ "entities": [
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    30.0,
+    22.0
+   ],
+   "end": [
+    185.0,
+    22.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    23.0,
+    128.0
+   ],
+   "end": [
+    186.0,
+    128.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    23.999999999999975,
+    25.0
+   ],
+   "end": [
+    23.999999999999982,
+    134.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    23.999999999999993,
+    310.0
+   ],
+   "end": [
+    24.0,
+    419.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    441.0,
+    319.0
+   ],
+   "end": [
+    441.0,
+    422.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    188.0,
+    24.0
+   ],
+   "end": [
+    188.0,
+    126.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    114.99999999999999,
+    308.0
+   ],
+   "end": [
+    115.0,
+    420.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    28.0,
+    306.0
+   ],
+   "end": [
+    112.0,
+    306.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    26.0,
+    422.0
+   ],
+   "end": [
+    113.0,
+    422.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    203.99999999999997,
+    189.0
+   ],
+   "end": [
+    204.0,
+    248.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  }
+ ],
+ "meta": {
+  "source": "data\\synth\\002.png"
+ }
+}

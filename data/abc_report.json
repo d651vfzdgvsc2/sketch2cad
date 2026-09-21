@@ -1,0 +1,68 @@
+[
+  {
+    "arm": "E",
+    "score": {
+      "iou": 1.0,
+      "dice": 1.0,
+      "ssim": 0.843,
+      "chamfer_px": 0.011,
+      "ink_ratio_pred": 0.98994,
+      "ink_ratio_gt": 0.98787,
+      "n_entities": 2,
+      "png": "D:\\1\\AI应用项目\\cad-agent\\data\\tmp\\abc\\d_real01_0.png"
+    },
+    "secs": 41.3,
+    "rounds": 4,
+    "picked": "D",
+    "proposals": {
+      "B": 0.8337,
+      "D": 0.843
+    },
+    "png": "D:\\1\\AI应用项目\\cad-agent\\data\\tmp\\abc\\d_real01_0.png",
+    "image": "real01.jpg"
+  },
+  {
+    "arm": "E",
+    "score": {
+      "iou": 0.9998,
+      "dice": 0.9999,
+      "ssim": 0.7672,
+      "chamfer_px": 0.03,
+      "ink_ratio_pred": 0.98294,
+      "ink_ratio_gt": 0.959,
+      "n_entities": 13,
+      "png": "D:\\1\\AI应用项目\\cad-agent\\data\\tmp\\abc\\d_real02_1.png"
+    },
+    "secs": 86.8,
+    "rounds": 4,
+    "picked": "D",
+    "proposals": {
+      "B": 0.7277,
+      "D": 0.7672
+    },
+    "png": "D:\\1\\AI应用项目\\cad-agent\\data\\tmp\\abc\\d_real02_1.png",
+    "image": "real02.jpg"
+  },
+  {
+    "arm": "E",
+    "score": {
+      "iou": 1.0,
+      "dice": 1.0,
+      "ssim": 0.7474,
+      "chamfer_px": 0.022,
+      "ink_ratio_pred": 0.98498,
+      "ink_ratio_gt": 0.97107,
+      "n_entities": 60,
+      "png": "D:\\1\\AI应用项目\\cad-agent\\data\\tmp\\abc\\b_real03_1.png"
+    },
+    "secs": 86.5,
+    "rounds": 4,
+    "picked": "B",
+    "proposals": {
+      "B": 0.7474,
+      "D": 0.7234
+    },
+    "png": "D:\\1\\AI应用项目\\cad-agent\\data\\tmp\\abc\\b_real03_1.png",
+    "image": "real03.jpg"
+  }
+]

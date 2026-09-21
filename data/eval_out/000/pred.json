@@ -1,0 +1,547 @@
+{
+ "width": 400.0,
+ "height": 504.0,
+ "layers": [
+  {
+   "name": "outline",
+   "color": 7
+  }
+ ],
+ "entities": [
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    124.0,
+    27.0
+   ],
+   "end": [
+    124.0,
+    97.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    124.00000000000001,
+    166.0
+   ],
+   "end": [
+    124.00000000000001,
+    219.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    272.0,
+    108.0
+   ],
+   "end": [
+    272.0,
+    158.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    272.0,
+    255.0
+   ],
+   "end": [
+    272.0,
+    291.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    272.0,
+    355.0
+   ],
+   "end": [
+    272.0,
+    401.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    272.0,
+    429.0
+   ],
+   "end": [
+    272.00000000000006,
+    479.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    190.0,
+    106.0
+   ],
+   "end": [
+    190.0,
+    136.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    190.0,
+    164.0
+   ],
+   "end": [
+    190.0,
+    215.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    23.0,
+    136.0
+   ],
+   "end": [
+    173.0,
+    136.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    287.0,
+    25.0
+   ],
+   "end": [
+    287.0,
+    189.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    190.0,
+    23.0
+   ],
+   "end": [
+    285.0,
+    23.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    33.0,
+    281.0
+   ],
+   "end": [
+    161.0,
+    281.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    17.999999999999993,
+    191.0
+   ],
+   "end": [
+    18.0,
+    267.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    81.0,
+    102.0
+   ],
+   "end": [
+    113.0,
+    102.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    46.99999999999999,
+    124.0
+   ],
+   "end": [
+    47.0,
+    182.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    47.0,
+    255.0
+   ],
+   "end": [
+    47.0,
+    285.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    204.0,
+    221.0
+   ],
+   "end": [
+    240.0,
+    221.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    200.0,
+    235.0
+   ],
+   "end": [
+    200.0,
+    274.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "line",
+   "layer": "outline",
+   "start": [
+    336.0,
+    435.0
+   ],
+   "end": [
+    380.0,
+    435.0
+   ],
+   "points": null,
+   "closed": false,
+   "center": null,
+   "radius": null,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "circle",
+   "layer": "outline",
+   "start": null,
+   "end": null,
+   "points": null,
+   "closed": false,
+   "center": [
+    233.0,
+    171.0
+   ],
+   "radius": 38.0,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "circle",
+   "layer": "outline",
+   "start": null,
+   "end": null,
+   "points": null,
+   "closed": false,
+   "center": [
+    151.0,
+    155.0
+   ],
+   "radius": 134.0,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "circle",
+   "layer": "outline",
+   "start": null,
+   "end": null,
+   "points": null,
+   "closed": false,
+   "center": [
+    98.0,
+    284.0
+   ],
+   "radius": 26.0,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "circle",
+   "layer": "outline",
+   "start": null,
+   "end": null,
+   "points": null,
+   "closed": false,
+   "center": [
+    97.0,
+    203.0
+   ],
+   "radius": 105.0,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "circle",
+   "layer": "outline",
+   "start": null,
+   "end": null,
+   "points": null,
+   "closed": false,
+   "center": [
+    160.0,
+    215.0
+   ],
+   "radius": 116.0,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  },
+  {
+   "type": "circle",
+   "layer": "outline",
+   "start": null,
+   "end": null,
+   "points": null,
+   "closed": false,
+   "center": [
+    169.0,
+    323.0
+   ],
+   "radius": 105.0,
+   "start_angle": null,
+   "end_angle": null,
+   "content": null,
+   "pos": null,
+   "height": null,
+   "rotation": 0.0
+  }
+ ],
+ "meta": {
+  "source": "data\\synth\\000.png"
+ }
+}
