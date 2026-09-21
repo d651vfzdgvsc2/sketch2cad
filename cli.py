@@ -30,6 +30,10 @@ def main() -> None:
     p_ens.add_argument("image")
     p_ens.add_argument("--rounds", type=int, default=2)
 
+    p_cal = sub.add_parser("calibrate", help="用尺寸标注校准比例尺，导出真实尺寸 DXF")
+    p_cal.add_argument("image")
+    p_cal.add_argument("--out", default="out")
+
     args = ap.parse_args()
 
     if args.cmd == "run":
@@ -58,6 +62,28 @@ def main() -> None:
               f"实体={res['best']['n_entities']}")
         print(f"DXF : {res['best']['dxf']}")
         print(f"预览: {res['best']['png']}")
+    elif args.cmd == "calibrate":
+        from pathlib import Path
+
+        from core.calibrate import estimate_scale, scale_ir
+        from emit.to_dxf import ir_to_dxf
+        from tools.ocr import run_ocr
+        from vectorize.vectorize import vectorize
+
+        ocr = run_ocr(args.image)
+        ir_cal = vectorize(args.image, params={"assemble": False, "dimension_action": "layer"}, ocr=ocr)
+        est = estimate_scale(ocr, ir_cal)
+        print(f"比例尺估计：{est}")
+        if est["mm_per_px"]:
+            ir = vectorize(args.image, ocr=ocr)
+            ir_scaled = scale_ir(ir, est["mm_per_px"])
+            out = Path(args.out)
+            out.mkdir(parents=True, exist_ok=True)
+            dxf = out / f"{Path(args.image).stem}_realsize.dxf"
+            ir_to_dxf(ir_scaled, dxf)
+            print(f"真实尺寸 DXF：{dxf}  (1px = {est['mm_per_px']}mm)")
+        else:
+            print("未能估计出比例尺（图上可解析的数字标注不足）")
 
 
 if __name__ == "__main__":

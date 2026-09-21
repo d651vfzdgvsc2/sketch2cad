@@ -50,11 +50,27 @@ def deterministic_proposal(image: str) -> dict:
     return sc
 
 
+def multiview_proposal(image: str) -> dict:
+    from core.multiview import vectorize_multiview
+
+    TMP.mkdir(parents=True, exist_ok=True)
+    stem = Path(image).stem
+    dxf = TMP / f"{stem}_MV.dxf"
+    ir, n_views = vectorize_multiview(image)
+    ir_to_dxf(ir, dxf)
+    sc = _score(dxf, image, TMP / f"{stem}_MV.png")
+    sc["proposal"] = "MV"
+    sc["views"] = n_views
+    return sc
+
+
 def run_ensemble(image: str, rounds: int = 2, use_b: bool = True, use_d: bool = True,
-                 use_vlm: bool = True) -> dict:
+                 use_vlm: bool = True, use_mv: bool = True) -> dict:
     TMP.mkdir(parents=True, exist_ok=True)
     stem = Path(image).stem
     proposals: dict[str, dict] = {"A": deterministic_proposal(image)}
+    if use_mv:
+        proposals["MV"] = multiview_proposal(image)
 
     if use_d:
         proposals["D"] = codegen_proposal(image, grounded=True, rounds=rounds,

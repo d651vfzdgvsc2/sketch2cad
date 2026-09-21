@@ -65,12 +65,14 @@ flowchart TB
   CLN --> VEC[提取 Agent<br/>OpenCV / RANSAC<br/>直线 · 圆 · 弧 · 椭圆]
 
   VEC --> PA[A 提案：确定性 CV 矢量化 + 图元装配]
+  VEC --> PMV[MV 提案：多视图分割 + 分区矢量化]
   VEC --> PD[D 提案：接地式代码生成<br/>CV精确坐标 + OCR + VLM描述 → LLM 写脚本]
   REC --> PD
   REC --> PB[B 提案：纯语义代码生成<br/>VLM 文字描述 → LLM 写脚本]
   IMG --> PDS[DS 提案：DeepSeek 直接看图<br/>写 ezdxf 脚本 + 错误反馈重试]
 
   PA --> VER[校验 Agent<br/>渲染回图 + 与原图比对]
+  PMV --> VER
   PD --> VER
   PB --> VER
   PDS --> VER
@@ -122,6 +124,8 @@ cad-agent/
 │  ├─ ensemble.py         集成流水线（多臂提案 + 客观仲裁）★ 工程图入口
 │  ├─ rockery.py          假山/有机形状通道（Potrace → IR → DXF）★ 假山入口
 │  ├─ assemble.py         图元装配层（共线合并/角度吸附/矩形装配）
+│  ├─ multiview.py        多视图分割（按空白切视图、分区矢量化）
+│  ├─ calibrate.py        比例尺校准（标注反推 mm/px → 真实尺寸 DXF）
 │  ├─ pipeline.py         单臂确定性流水线
 │  └─ config.py           .env 配置读取
 ├─ agents/
@@ -165,6 +169,7 @@ python gui.py
 
 # 命令行方式
 python cli.py ensemble 你的图.jpg        # 工程图：多Agent集成
+python cli.py calibrate 你的图.jpg --out out   # 用尺寸标注校准比例尺 → 真实尺寸 DXF
 python -m tools.trace_potrace 假山.jpg    # 假山：Potrace 轮廓
 
 # 其它命令
@@ -217,6 +222,7 @@ python -m experiments.run_compare --arms A,B,C,D,E   # 对照实验
 | C | CV 坐标 + OCR 喂 LLM（不克制） | 照抄碎线段，效果一般 |
 | D | **融合**：CV 坐标 + VLM 语义 + "只画几何"约束 | **CV 可靠时最优**（real01/03 夺冠） |
 | **DS** | **DeepSeek 直接看图写 ezdxf 脚本 + 错误反馈重试** | 快、稳、能夺冠（real02）；"整体生成"路线 |
+| **MV** | 多视图分割：按空白把视图切开、各自矢量化再合并 | 对多视图图有增益（real02），对单视图易误切；作为可选臂，由仲裁决定是否采用 |
 | E | **集成仲裁**：跑全部提案，渲染比优 | **平均最优，且保证不下于当轮最优** |
 
 **关键发现**：
@@ -238,6 +244,9 @@ python -m experiments.run_compare --arms A,B,C,D,E   # 对照实验
 关键算法：**圆周覆盖度验证**（real04 假圆 54→7）、**尺寸线剔除**（real03 实体 118→68）、
 **图框/标题栏剔除**、**多方向剖面线剔除**、**椭圆检测**（带覆盖度验证）、**图元装配**
 （共线合并 / 角度吸附 / 矩形装配）、Hough 阈值优化。
+
+**比例尺校准**：用 OCR 到的尺寸标注 + 最近线段长度反推 `mm/px`，中位数抗离群，
+实现**像素图 → 真实尺寸 DXF**（real01 标注 60×50，还原包围盒 61.5×50.0 mm，误差 <3%）。
 
 ---
 

@@ -112,6 +112,26 @@ class App:
                 dst.write_bytes(src.read_bytes())
                 preview = res["best"]["png"]
                 self.root.after(0, self.log, f"选中 {res['picked']}，SSIM={res['best']['ssim']:.4f}")
+
+                # 比例尺校准 -> 真实尺寸 DXF
+                try:
+                    from core.calibrate import estimate_scale, scale_ir
+                    from emit.to_dxf import ir_to_dxf
+                    from tools.ocr import run_ocr
+                    from vectorize.vectorize import vectorize
+
+                    ocr = run_ocr(path)
+                    ir_cal = vectorize(path, params={"assemble": False,
+                                                     "dimension_action": "layer"}, ocr=ocr)
+                    est = estimate_scale(ocr, ir_cal)
+                    if est["mm_per_px"]:
+                        ir_s = scale_ir(vectorize(path, ocr=ocr), est["mm_per_px"])
+                        rs = OUT_DIR / f"{Path(path).stem}_realsize.dxf"
+                        ir_to_dxf(ir_s, rs)
+                        self.root.after(0, self.log,
+                                        f"比例尺≈{est['mm_per_px']} mm/px，已导出真实尺寸: {rs.name}")
+                except Exception as e:  # noqa: BLE001
+                    self.root.after(0, self.log, f"比例尺校准跳过: {type(e).__name__}")
             else:
                 self.root.after(0, self.log, "[假山模式] Potrace 轮廓拟合启动…")
                 from core.rockery import run_rockery
