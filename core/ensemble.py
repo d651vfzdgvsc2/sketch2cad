@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -164,6 +165,36 @@ def combined_score(sc: dict) -> float:
     return round(0.4 * ssim + 0.4 * dice + 0.2 * chamfer_term, 6)
 
 
+# ---------------- 结果缓存（同一张图重复跑时秒出，零质量损失）----------------
+CACHE_VERSION = "1"  # 改动流水线后请 +1，避免命中旧结果
+CACHE_FILE = TMP / "_cache.json"
+
+
+def _cache_key(image: str, opts: dict) -> str:
+    p = Path(image)
+    try:
+        st = p.stat()
+        sig = f"{p.resolve()}|{st.st_mtime_ns}|{st.st_size}"
+    except OSError:
+        sig = str(image)
+    return hashlib.md5((CACHE_VERSION + "|" + sig + "|"
+                        + json.dumps(opts, sort_keys=True)).encode()).hexdigest()
+
+
+def _load_cache() -> dict:
+    if CACHE_FILE.exists():
+        try:
+            return json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return {}
+    return {}
+
+
+def _save_cache(cache: dict) -> None:
+    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def _try_proposal(fn, *args, **kwargs):
     """单条臂失败不影响整体：捕获异常并返回 None（由调用方跳过）。"""
     try:
@@ -175,9 +206,17 @@ def _try_proposal(fn, *args, **kwargs):
 
 def run_ensemble(image: str, rounds: int = 2, use_b: bool = True, use_d: bool = True,
                  use_vlm: bool = True, use_mv: bool = True, use_cl: bool = True,
-                 use_spec: bool = True) -> dict:
+                 use_spec: bool = True, use_cache: bool = True) -> dict:
     TMP.mkdir(parents=True, exist_ok=True)
     stem = Path(image).stem
+    opts = {"rounds": rounds, "b": use_b, "d": use_d, "vlm": use_vlm,
+            "mv": use_mv, "cl": use_cl, "spec": use_spec}
+    key = _cache_key(image, opts)
+    if use_cache:
+        hit = _load_cache().get(key)
+        if hit and hit.get("best", {}).get("dxf") and Path(hit["best"]["dxf"]).exists():
+            print("[ensemble] 命中缓存，直接返回（零耗时）")
+            return hit
     proposals: dict[str, dict] = {}
 
     def _add(name: str, res) -> None:
@@ -209,7 +248,7 @@ def run_ensemble(image: str, rounds: int = 2, use_b: bool = True, use_d: bool = 
         raise RuntimeError("所有提案都失败了")
 
     picked = max(proposals, key=lambda k: combined_score(proposals[k]))
-    return {
+    result = {
         "image": image,
         "picked": picked,
         "best": proposals[picked],
@@ -218,3 +257,8 @@ def run_ensemble(image: str, rounds: int = 2, use_b: bool = True, use_d: bool = 
                           "n_entities": v["n_entities"], "png": v.get("png", "")}
                       for k, v in proposals.items()},
     }
+    if use_cache:
+        cache = _load_cache()
+        cache[key] = result
+        _save_cache(cache)
+    return result
