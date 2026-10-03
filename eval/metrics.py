@@ -13,7 +13,7 @@ def to_ink_mask(img: np.ndarray) -> np.ndarray:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     if float(gray.mean()) < 127:  # 深色背景 -> 反相
         gray = 255 - gray
-    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     return bw > 127
 
 

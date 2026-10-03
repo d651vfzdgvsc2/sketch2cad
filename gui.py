@@ -39,7 +39,7 @@ class App:
         self.mode = tk.StringVar(value="cad")
         tk.Radiobutton(box, text="① 工程图（规则几何）— 方块 / 圆 / 槽 / 孔，多Agent协同",
                        variable=self.mode, value="cad", font=FONT, bg="#f5f5f7").pack(anchor="w")
-        tk.Radiobutton(box, text="② 假山（有机形状）— 自由曲线轮廓，Potrace拟合",
+        tk.Radiobutton(box, text="② 假山（有机形状）— 自由曲线轮廓，中心线提取",
                        variable=self.mode, value="rockery", font=FONT, bg="#f5f5f7").pack(anchor="w", pady=(4, 0))
         tk.Label(root, text="提示：简单/中等工程图用①；假山、植物等有机曲线用②。"
                             "复杂多视图装配图用①只能部分重建。",
