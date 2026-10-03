@@ -12,6 +12,7 @@ from pathlib import Path
 
 import ezdxf
 
+from core.config import get
 from emit.ir import DrawingIR
 from eval.metrics import compare
 from render.render_dxf import render_dxf_to_image
@@ -76,6 +77,14 @@ D_PROMPT = """
 - 脚本最后保存到：r"{OUT}"
 只输出一个 ```python 代码块，不要解释。
 """
+
+
+def _describe(image: str, prompt: str, max_tokens: int) -> str:
+    """按 .env 的 VLM_PROVIDER 选择视觉模型：dashscope(通义千问) 或 deepseek。"""
+    provider = get("VLM_PROVIDER", "dashscope").strip().lower()
+    if provider == "deepseek":
+        return ask_vision(image, prompt, provider="deepseek", max_tokens=max_tokens)
+    return ask_image(image, prompt, max_tokens=max_tokens)
 
 
 def _wh(image: str) -> tuple[int, int]:
@@ -166,9 +175,9 @@ def codegen_proposal(image: str, grounded: bool = True, rounds: int = 2,
         ocr = run_ocr(image)
         geom = geometry_json(vectorize(image, ocr=ocr), selective=True)
         texts = [o["text"] for o in ocr]
-        desc = ask_image(image, DESCRIBE_PROMPT, model=vlm_model, max_tokens=800)
+        desc = _describe(image, DESCRIBE_PROMPT, 800)
     else:
-        desc = ask_image(image, DESCRIBE_PROMPT, model=vlm_model, max_tokens=1200)
+        desc = _describe(image, DESCRIBE_PROMPT, 1200)
 
     best = None
     feedback = ""
