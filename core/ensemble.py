@@ -164,30 +164,49 @@ def combined_score(sc: dict) -> float:
     return round(0.4 * ssim + 0.4 * dice + 0.2 * chamfer_term, 6)
 
 
+def _try_proposal(fn, *args, **kwargs):
+    """单条臂失败不影响整体：捕获异常并返回 None（由调用方跳过）。"""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:  # noqa: BLE001
+        print(f"[ensemble] 提案失败已跳过：{type(e).__name__}: {e}")
+        return None
+
+
 def run_ensemble(image: str, rounds: int = 2, use_b: bool = True, use_d: bool = True,
                  use_vlm: bool = True, use_mv: bool = True, use_cl: bool = True,
                  use_spec: bool = True) -> dict:
     TMP.mkdir(parents=True, exist_ok=True)
     stem = Path(image).stem
-    proposals: dict[str, dict] = {"A": deterministic_proposal(image)}
-    if use_cl:
-        proposals["CL"] = centerline_proposal(image)
-    if use_spec:
-        proposals["SPEC"] = spec_proposal(image)
-    if use_mv:
-        proposals["MV"] = multiview_proposal(image)
+    proposals: dict[str, dict] = {}
 
+    def _add(name: str, res) -> None:
+        if res:
+            proposals[name] = res
+
+    _add("A", _try_proposal(deterministic_proposal, image))
+    if use_cl:
+        _add("CL", _try_proposal(centerline_proposal, image))
+    if use_spec:
+        _add("SPEC", _try_proposal(spec_proposal, image))
+    if use_mv:
+        _add("MV", _try_proposal(multiview_proposal, image))
     if use_d:
-        proposals["D"] = codegen_proposal(image, grounded=True, rounds=rounds,
-                                           out_dir=TMP, tag=f"{stem}_D")
+        _add("D", _try_proposal(codegen_proposal, image, grounded=True, rounds=rounds,
+                                out_dir=TMP, tag=f"{stem}_D"))
     if use_b:
-        proposals["B"] = codegen_proposal(image, grounded=False, rounds=rounds,
-                                          out_dir=TMP, tag=f"{stem}_B")
+        _add("B", _try_proposal(codegen_proposal, image, grounded=False, rounds=rounds,
+                                out_dir=TMP, tag=f"{stem}_B"))
     if use_vlm:  # DeepSeek 直接看图写代码（强模型主画）
-        proposals["DS"] = codegen_proposal(image, direct=True, rounds=3,
-                                           out_dir=TMP, tag=f"{stem}_DS",
-                                           vlm_model="deepseek-chat", provider="deepseek")
-        proposals["DS"]["proposal"] = "DS"
+        ds = _try_proposal(codegen_proposal, image, direct=True, rounds=3,
+                           out_dir=TMP, tag=f"{stem}_DS",
+                           vlm_model="deepseek-chat", provider="deepseek")
+        if ds:
+            ds["proposal"] = "DS"
+            _add("DS", ds)
+
+    if not proposals:
+        raise RuntimeError("所有提案都失败了")
 
     picked = max(proposals, key=lambda k: combined_score(proposals[k]))
     return {
