@@ -16,6 +16,7 @@ def main() -> None:
     p_run = sub.add_parser("run", help="单张图 -> DXF")
     p_run.add_argument("image")
     p_run.add_argument("--out", default="out")
+    p_run.add_argument("--no-ai-review", action="store_true", help="关闭云端文字复核，仅使用本地OCR与几何复核")
 
     p_gen = sub.add_parser("gen", help="生成合成数据集")
     p_gen.add_argument("--n", type=int, default=30)
@@ -31,18 +32,20 @@ def main() -> None:
     p_ens.add_argument("--rounds", type=int, default=2)
     p_ens.add_argument("--out", default=None, help="工程图运行结果目录（每次运行自动隔离）")
     p_ens.add_argument("--no-ocr", action="store_true", help="关闭本地OCR，保留原图文字笔画")
+    p_ens.add_argument("--no-ai-review", action="store_true", help="关闭云端文字复核，仅使用本地OCR与几何复核")
     p_ens.add_argument("--semantic", action="store_true", help="可选：调用云端模型复核模板语义")
     p_ens.add_argument("--cloud-proposals", action="store_true", help="可选：额外运行旧云端生成候选")
 
     p_cal = sub.add_parser("calibrate", help="用尺寸标注校准比例尺，导出真实尺寸 DXF")
     p_cal.add_argument("image")
     p_cal.add_argument("--out", default="out")
+    p_cal.add_argument("--no-ai-review", action="store_true")
 
     args = ap.parse_args()
 
     if args.cmd == "run":
         from core.ensemble import run_ensemble
-        result = run_ensemble(args.image, out_dir=args.out)
+        result = run_ensemble(args.image, out_dir=args.out, use_ai_review=False if args.no_ai_review else None)
         print(f"工程图结果: {result['picked']}  实体={result['best']['n_entities']}")
         print(f"DXF: {result['best']['dxf']}  预览: {result['best']['png']}")
     elif args.cmd == "gen":
@@ -60,6 +63,7 @@ def main() -> None:
         from core.ensemble import run_ensemble
 
         res = run_ensemble(args.image, rounds=args.rounds, out_dir=args.out,
+                           use_ai_review=False if args.no_ai_review else None,
                            use_ocr=not args.no_ocr, use_semantic=args.semantic,
                            use_b=args.cloud_proposals, use_d=args.cloud_proposals,
                            use_vlm=args.cloud_proposals)
@@ -70,7 +74,7 @@ def main() -> None:
         print(f"预览: {res['best']['png']}")
     elif args.cmd == "calibrate":
         from core.ensemble import run_ensemble
-        result = run_ensemble(args.image, out_dir=args.out)
+        result = run_ensemble(args.image, out_dir=args.out, use_ai_review=False if args.no_ai_review else None)
         print(f"最佳像素版: {result['best']['dxf']}")
         print(f"尺寸关联与校准: {result['calibration']}")
 

@@ -261,16 +261,16 @@ def test_codegen_rounds_use_foreground_score_not_ssim(monkeypatch, tmp_path):
     assert result['f1'] == .93 and result['ssim'] == .8
 
 
-def test_default_entry_is_local_and_runs_are_isolated(tmp_path, monkeypatch):
+def test_explicit_offline_entry_and_runs_are_isolated(tmp_path, monkeypatch):
     import tools.vlm
     def no_cloud(*args, **kwargs):
-        pytest.fail('Default engineering pipeline called a cloud model')
+        pytest.fail('Explicit offline engineering pipeline called a cloud model')
     monkeypatch.setattr(tools.vlm, 'ask_vision', no_cloud)
     monkeypatch.setattr(tools.vlm, 'ask_image', no_cloud)
     from core.ensemble import run_ensemble
     image, _ = drawing(tmp_path)
-    a = run_ensemble(str(image), out_dir=tmp_path/'runs', use_ocr=False)
-    b = run_ensemble(str(image), out_dir=tmp_path/'runs', use_ocr=False, use_cache=True)
+    a = run_ensemble(str(image), out_dir=tmp_path/'runs', use_ocr=False, use_ai_review=False)
+    b = run_ensemble(str(image), out_dir=tmp_path/'runs', use_ocr=False, use_cache=True, use_ai_review=False)
     assert a['out_dir'] != b['out_dir']
     assert a['best']['f1'] > .97 and a['template_count'] >= 5
     assert a['best']['dxf'] != b['best']['dxf']

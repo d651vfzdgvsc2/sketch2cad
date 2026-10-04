@@ -25,10 +25,12 @@ from engineering.cleanup import (continuous_paths, assemble_paths, close_fitted_
                                  structure_report, heal_scan_strokes, repair_color_crossings,
                                  assemble_centerlines, choose_assemblies)
 from engineering.text import read_annotations, extract_annotations, configure_native_text
+from engineering.review import review_geometry
+from engineering.dimensions import add_native_dimensions
 from tools.image_io import imread, imwrite
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "engineering-cad-v2"
+VERSION = "engineering-cad-v3-review"
 
 
 def source_version():
@@ -74,7 +76,10 @@ def write_ir(ir, target):
     for entity, rgb in zip(doc.modelspace(), ir.meta.get("stroke_colors_rgb", [])):
         if rgb is not None:
             entity.rgb = tuple(rgb)
+    dimension_report = add_native_dimensions(doc, ir)
+    ir.meta['native_dimensions'] = dimension_report
     doc.saveas(str(target))
+    return dimension_report
 
 
 def score_dxf(dxf, image, png, *, legacy_style=False):
@@ -195,7 +200,8 @@ def save_diagnostics(image, predicted, out):
 
 
 def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
-                    use_semantic=False, provider="dashscope", legacy_proposals=None):
+                    use_semantic=False, provider="dashscope", legacy_proposals=None,
+                    use_ai_review=None):
     start = time.perf_counter()
     image = str(Path(image).resolve())
     digest = hashlib.sha256(Path(image).read_bytes()).hexdigest()
@@ -203,11 +209,28 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     out = parent / f"{Path(image).stem}_{digest[:8]}_{uuid.uuid4().hex[:8]}"
     out.mkdir(parents=True, exist_ok=False)
     ocr, warning = safe_ocr(image) if use_ocr else ([], None)
+    raw_ocr = ocr
+    from engineering.ai_review import configured, review_annotations
+    if use_ai_review is None:
+        from core.config import get
+        use_ai_review = configured() and get('ENGINEERING_AI_REVIEW', '1') != '0'
+    ai_report = {'status': 'disabled'}
+    if use_ai_review and use_ocr and ocr:
+        try:
+            ocr, ai_report = review_annotations(image, ocr, out/'review', provider)
+        except Exception as exc:
+            ai_report = {'status': 'failed', 'reason': type(exc).__name__}
     irs, features, report = build_proposals(image, ocr, use_templates)
+    report['ai_text_review'] = ai_report
+    report['ocr_before_review'] = raw_ocr
+    source_image = imread(image)
+    irs = {name: review_geometry(ir, source_image) for name, ir in irs.items()}
+    for ir in irs.values():
+        ir.meta['cad_structure'] = structure_report(ir.entities)
     scores = {}
     for name, ir in irs.items():
         dxf = out / f"{name}.dxf"
-        write_ir(ir, dxf)
+        dimensions = write_ir(ir, dxf)
         (out / f"{name}.json").write_text(ir.to_json(), encoding="utf-8")
         scores[name] = score_dxf(dxf, image, out / f"{name}.png")
         # Compare geometry independently of font glyph differences. The full
@@ -218,6 +241,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         source[text_regions > 0] = rendered[text_regions > 0] = 255
         scores[name]['geometry'] = compare(rendered, source)
         scores[name]['cad_structure'] = ir.meta['cad_structure']
+        scores[name]['native_dimensions'] = dimensions['native_dimensions']
+        scores[name]['geometry_review'] = ir.meta['geometry_review']
         scores[name].update(proposal=name, ir=str(out / f"{name}.json"))
     if legacy_proposals:
         for name, fn in legacy_proposals.items():
@@ -254,6 +279,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                   picked=picked, best=selected, proposals=scores, out_dir=str(out),
                   template_count=len(features), selected_templates=(len(irs[picked].meta.get('features', [])) if picked in irs else 0),
                   units="pixels", semantic_enabled=use_semantic)
+    report['native_dimensions'] = irs[picked].meta.get('native_dimensions', {}) if picked in irs else {}
     if warning:
         report.setdefault("warnings", []).append(warning)
     unresolved = [a for a in report['annotations'] if a['status'].startswith('review')]
@@ -269,6 +295,12 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
             report["semantic_review"] = semantic_review(image, features, ocr, provider)
         except Exception as exc:
             report.setdefault("warnings", []).append(f"Semantic review failed: {type(exc).__name__}")
+    if use_ai_review:
+        from engineering.ai_review import review_final_drawing
+        report['ai_final_review'] = review_final_drawing(image, selected['png'],
+            {'entity_count': selected['n_entities'],
+             'native_dimensions': selected.get('native_dimensions', 0),
+             'geometry_review': selected.get('geometry_review', {})}, out, provider)
     from engineering.calibration import calibrate_selected
     try:
         report["calibration"] = calibrate_selected(selected, ocr, out)

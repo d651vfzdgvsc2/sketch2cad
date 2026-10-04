@@ -117,8 +117,9 @@ def spec_proposal(image: str, provider: str = "deepseek", out_dir=None) -> dict:
 def run_ensemble(image: str, rounds: int = 2, use_b: bool = False, use_d: bool = False,
                  use_vlm: bool = False, use_mv: bool = False, use_cl: bool = False,
                  use_spec: bool = False, use_cache: bool = False, *, out_dir=None,
-                 use_templates=True, use_ocr=True, use_semantic=False, use_cv=False):
-    """Local measured reconstruction by default. Cloud arms are explicit opt-ins.
+                 use_templates=True, use_ocr=True, use_semantic=False, use_cv=False,
+                 use_ai_review=None):
+    """Measured reconstruction, with bounded visual review when configured.
 
     use_cache remains accepted for compatibility; old cached files are not read.
     Every run has its own directory and content/code fingerprint.
@@ -141,4 +142,5 @@ def run_ensemble(image: str, rounds: int = 2, use_b: bool = False, use_d: bool =
         proposals["DS"] = lambda image, out: codegen_proposal(image, direct=True, rounds=rounds,
                                                              out_dir=out, tag="DS", provider="deepseek")
     return run_engineering(image, out_dir, use_ocr=use_ocr, use_templates=use_templates,
-                           use_semantic=use_semantic, legacy_proposals=proposals)
+                           use_semantic=use_semantic, legacy_proposals=proposals,
+                           use_ai_review=use_ai_review)

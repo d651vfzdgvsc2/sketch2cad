@@ -83,6 +83,18 @@ def extract_annotations(ink, items):
             if x >= xa and y >= ya and x+cw <= xb and y+ch <= yb:
                 contained.append(idx)
         glyph = np.isin(labels[ya:yb, xa:xb], contained)
+        separation = 'isolated_components'
+        if item.get('review_status') == 'ai_reviewed':
+            # A reviewed label can touch a dimension/table line. Preserve
+            # strokes that extend beyond its box, remove the remaining glyphs.
+            protected = np.zeros_like(ink)
+            for kernel in (np.ones((1, max(15, xb-xa+8)), np.uint8),
+                           np.ones((max(15, yb-ya+8), 1), np.uint8)):
+                protected |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, kernel)
+            protected = cv2.dilate(protected, np.ones((3, 3), np.uint8))
+            touching = (ink[ya:yb, xa:xb] > 0) & (protected[ya:yb, xa:xb] == 0)
+            glyph |= touching
+            separation = 'reviewed_text_with_crossing_lines_preserved'
         gy, gx = np.where(glyph)
         if len(gx) < 3:
             records.append({**item, 'status': 'review_no_isolated_glyphs'})
@@ -113,8 +125,10 @@ def extract_annotations(ink, items):
         entities.append(Entity(type='text', content=item['text'], pos=center,
                                height=float(height), rotation=-angle, layer='text'))
         uncertain = (item['score'] < .95 or bool(item.get('alternatives'))
-                     or bool(re.search(r'[QΩ]', item['text'])))
+                     or bool(re.search(r'[QΩ]', item['text']))
+                     or item.get('review_status') == 'numeric_conflict')
         records.append({**item, 'status': 'review' if uncertain else 'recognized',
+                        'separation': separation,
                         'text_index': index, 'width_px': float(width), 'height_px': float(height),
                         'position': list(center), 'cad_rotation': -angle})
     return entities, mask, records
