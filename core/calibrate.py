@@ -1,7 +1,6 @@
 """用尺寸标注反推比例尺：让输出 DXF 具备真实尺寸（mm）。
 
-思路：把 OCR 到的数字，和它最近的一条线段长度做比值（value / length_px），
-收集多个估计后取中位数，抗离群。
+需要尺寸文字与两端界线的关联证据，以及多个独立一致的比例；冲突时不自动校准。
 """
 from __future__ import annotations
 
@@ -24,45 +23,15 @@ def _point_seg_dist(p, a, b) -> float:
 
 
 def _parse_number(text: str) -> float | None:
-    nums = re.findall(r"\d+\.?\d*", text or "")
-    if len(nums) == 1:
-        try:
-            return float(nums[0])
-        except ValueError:
-            return None
-    return None
+    from engineering.calibration import parse_dimension
+    parsed = parse_dimension(text)
+    return parsed["value"] if parsed["kind"] == "linear" else None
 
 
 def estimate_scale(ocr: list[dict], ir: DrawingIR, tol: float = 50.0,
                    min_len: float = 8.0) -> dict:
-    lines = [e for e in ir.entities if e.type == "line"]
-    est: list[float] = []
-    for o in ocr:
-        v = _parse_number(o.get("text", ""))
-        if not v or v <= 0:
-            continue
-        c = o["center"]
-        best, best_d = None, tol
-        for e in lines:
-            d = _point_seg_dist(c, e.start, e.end)
-            if d < best_d:
-                best_d, best = d, e
-        if best is None:
-            continue
-        length = math.hypot(best.end[0] - best.start[0], best.end[1] - best.start[1])
-        if length < min_len:
-            continue
-        est.append(v / length)
-    if not est:
-        return {"mm_per_px": None, "n": 0, "n_inliers": 0, "estimates": []}
-
-    est_sorted = sorted(est)
-    med = est_sorted[len(est_sorted) // 2]
-    inliers = sorted(x for x in est if 0.4 * med <= x <= 2.5 * med)
-    if inliers:
-        med = inliers[len(inliers) // 2]
-    return {"mm_per_px": round(med, 5), "n": len(est), "n_inliers": len(inliers),
-            "estimates": [round(x, 4) for x in est]}
+    from engineering.calibration import estimate_scale as conservative_estimate
+    return conservative_estimate(ocr, ir, tol, min_len)
 
 
 def scale_ir(ir: DrawingIR, factor: float) -> DrawingIR:

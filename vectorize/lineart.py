@@ -23,15 +23,8 @@ from vectorize.preprocess import skeleton, to_ink
 
 # ---------------- 骨架处理 ----------------
 def _prune_skeleton(mask: np.ndarray, n: int = 10) -> np.ndarray:
-    skel = mask.copy()
-    k = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]], np.uint8)
-    for _ in range(n):
-        nb = cv2.filter2D(skel.astype(np.uint8), -1, k, borderType=cv2.BORDER_CONSTANT)
-        endpoints = skel & (nb == 1)
-        if not endpoints.any():
-            break
-        skel = skel & ~endpoints
-    return skel
+    from engineering.trace import prune_spurs
+    return prune_spurs(mask, max_length=n)
 
 
 def _trace_skeleton(mask: np.ndarray) -> list[list[tuple[int, int]]]:

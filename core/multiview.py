@@ -62,7 +62,8 @@ def _offset_entity(e: Entity, dx: float, dy: float) -> Entity:
 
 
 def vectorize_multiview(image: str, params: dict | None = None,
-                        dilate_px: int = 50, min_area_ratio: float = 0.02) -> tuple[DrawingIR, int]:
+                        dilate_px: int = 50, min_area_ratio: float = 0.02,
+                        out_dir=None) -> tuple[DrawingIR, int]:
     """多视图分割 + 分区矢量化。返回 (合并后的 IR, 视图数)。"""
     bgr = imread(image)
     if bgr is None:
@@ -75,12 +76,14 @@ def vectorize_multiview(image: str, params: dict | None = None,
     if len(regions) <= 1:
         return vectorize(image, params=params, ocr=run_ocr(image)), 1
 
-    TMP.mkdir(parents=True, exist_ok=True)
+    import uuid
+    tmp = Path(out_dir) if out_dir else TMP / uuid.uuid4().hex[:12]
+    tmp.mkdir(parents=True, exist_ok=True)
     stem = Path(image).stem
     all_entities: list[Entity] = []
     for idx, (x, y, rw, rh) in enumerate(regions):
         crop = bgr[y:y + rh, x:x + rw]
-        crop_path = TMP / f"{stem}_v{idx}.png"
+        crop_path = tmp / f"{stem}_v{idx}.png"
         imwrite(crop_path, crop)
         ocr = run_ocr(crop_path)
         ir = vectorize(str(crop_path), params=params, ocr=ocr)

@@ -29,6 +29,10 @@ def main() -> None:
     p_ens = sub.add_parser("ensemble", help="集成流水线：多臂提案 + 客观仲裁（推荐）")
     p_ens.add_argument("image")
     p_ens.add_argument("--rounds", type=int, default=2)
+    p_ens.add_argument("--out", default=None, help="工程图运行结果目录（每次运行自动隔离）")
+    p_ens.add_argument("--no-ocr", action="store_true", help="关闭本地OCR，保留原图文字笔画")
+    p_ens.add_argument("--semantic", action="store_true", help="可选：调用云端模型复核模板语义")
+    p_ens.add_argument("--cloud-proposals", action="store_true", help="可选：额外运行旧云端生成候选")
 
     p_cal = sub.add_parser("calibrate", help="用尺寸标注校准比例尺，导出真实尺寸 DXF")
     p_cal.add_argument("image")
@@ -37,11 +41,10 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.cmd == "run":
-        from core.pipeline import run
-
-        ir, dxf, png = run(args.image, args.out)
-        print(f"图元统计: {ir.counts()}")
-        print(f"DXF: {dxf}  预览: {png}")
+        from core.ensemble import run_ensemble
+        result = run_ensemble(args.image, out_dir=args.out)
+        print(f"工程图结果: {result['picked']}  实体={result['best']['n_entities']}")
+        print(f"DXF: {result['best']['dxf']}  预览: {result['best']['png']}")
     elif args.cmd == "gen":
         from datagen.make_dataset import make
 
@@ -56,34 +59,20 @@ def main() -> None:
     elif args.cmd == "ensemble":
         from core.ensemble import run_ensemble
 
-        res = run_ensemble(args.image, rounds=args.rounds)
-        print(f"各提案 SSIM: {res['proposals']}")
-        print(f"仲裁选中: {res['picked']}  SSIM={res['best']['ssim']}  "
+        res = run_ensemble(args.image, rounds=args.rounds, out_dir=args.out,
+                           use_ocr=not args.no_ocr, use_semantic=args.semantic,
+                           use_b=args.cloud_proposals, use_d=args.cloud_proposals,
+                           use_vlm=args.cloud_proposals)
+        print(f"各提案固定画布指标: {res['proposals']}")
+        print(f"仲裁选中: {res['picked']}  线条F1={res['best']['f1']}  "
               f"实体={res['best']['n_entities']}")
         print(f"DXF : {res['best']['dxf']}")
         print(f"预览: {res['best']['png']}")
     elif args.cmd == "calibrate":
-        from pathlib import Path
-
-        from core.calibrate import estimate_scale, scale_ir
-        from emit.to_dxf import ir_to_dxf
-        from tools.ocr import run_ocr
-        from vectorize.vectorize import vectorize
-
-        ocr = run_ocr(args.image)
-        ir_cal = vectorize(args.image, params={"assemble": False, "dimension_action": "layer"}, ocr=ocr)
-        est = estimate_scale(ocr, ir_cal)
-        print(f"比例尺估计：{est}")
-        if est["mm_per_px"]:
-            ir = vectorize(args.image, ocr=ocr)
-            ir_scaled = scale_ir(ir, est["mm_per_px"])
-            out = Path(args.out)
-            out.mkdir(parents=True, exist_ok=True)
-            dxf = out / f"{Path(args.image).stem}_realsize.dxf"
-            ir_to_dxf(ir_scaled, dxf)
-            print(f"真实尺寸 DXF：{dxf}  (1px = {est['mm_per_px']}mm)")
-        else:
-            print("未能估计出比例尺（图上可解析的数字标注不足）")
+        from core.ensemble import run_ensemble
+        result = run_ensemble(args.image, out_dir=args.out)
+        print(f"最佳像素版: {result['best']['dxf']}")
+        print(f"尺寸关联与校准: {result['calibration']}")
 
 
 if __name__ == "__main__":

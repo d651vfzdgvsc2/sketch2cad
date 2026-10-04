@@ -14,8 +14,8 @@ import ezdxf
 
 from core.config import get
 from emit.ir import DrawingIR
-from eval.metrics import compare
-from render.render_dxf import render_dxf_to_image
+from engineering.metrics import compare, combined_score
+from engineering.render import render_dxf_to_image
 from tools.codegen import extract_code, run_script
 from tools.image_io import imread
 from tools.llm import chat
@@ -25,7 +25,6 @@ from vectorize.vectorize import vectorize
 
 ROOT = Path(__file__).resolve().parent.parent
 TMP = ROOT / "data" / "tmp" / "ensemble"
-GEOM_MIN_LEN = 45.0
 
 DESCRIBE_PROMPT = """这是一张工程/CAD 图纸。请用文字尽可能详细地描述，供另一个程序据此重绘：
 1) 图形元素及位置：用 0~1 归一化坐标描述（如"圆，圆心约(0.5,0.55)，半径约0.13"）
@@ -44,6 +43,7 @@ ezdxf 的 y 轴向上，请对每个点做转换：cad_y = {H} - y。
 ```python
 import ezdxf
 doc = ezdxf.new("R2010")
+doc.units = 0  # 本阶段为像素单位，真实毫米缩放由程序另行处理
 msp = doc.modelspace()
 msp.add_line((x1, y1), (x2, y2))
 msp.add_lwpolyline([(x1, y1), (x2, y2), ...], close=True)   # 多段线
@@ -55,13 +55,15 @@ t.set_placement((x, y))                                        # 文字用 set_p
 doc.saveas(r"{OUT}")
 ```
 【禁止】不要 import ezdxf.math.Matrix4（不存在）；不要用 add_text(...).set_pos(align='MIDDLE_CENTER')；
-不要用不确定的 add_hatch 参数。宁可少画，也不要写会报错的代码。
+不要用不确定的 add_hatch 参数。必须保留可确认的完整结构和标注；不要为简化代码省略关键特征。
+优先使用规则结构：圆角矩形、两端半圆的长圆槽、同心圆、实测孔阵列。
+位置与尺寸以图片像素证据为准；尺寸标注冲突时不修改数字、不进行非等比拉伸。
 """
 
 D_PROMPT = """
 你是资深 CAD 绘图工程师。下面有三份信息，请据此写一个 Python 脚本（只用 ezdxf 和标准库）还原这张图。
 
-【1】算法精确测量出的图元(JSON，坐标精确)：
+【1】算法检测候选(JSON，像素坐标仍有拟合误差，包含全部支持的图元类型)：
 {geom}
 
 【2】OCR 识别到的文字：{texts}
@@ -69,10 +71,11 @@ D_PROMPT = """
 【3】图纸语义描述：{desc}
 
 【必须遵守的原则】
-- 只保留**真正的几何**：外形轮廓、孔、槽、圆、圆弧。
-- 尺寸线、尺寸界线、箭头、点划线中心线都属于**标注**，一律**不要画**。
-- 能合并成完整形状的（如矩形四边、圆），要合并；**不要照抄碎线段**。
-- 坐标直接用上面的精确值。画布宽 {W} 高 {H}，图像坐标原点左上、y 向下；
+- 保留外形轮廓、孔、槽、圆弧、椭圆、闭合多段线和有像素证据的短线。
+- 尺寸线、尺寸界线、箭头、中心线和文字分图层保留，与原图完整性目标一致。
+- 按参数化结构组织几何：长圆槽=两直线+相切半圆；圆角矩形保留圆角；孔阵列只使用实际观察到的孔。
+- 不跨视图合并，不把圆弧替成折角。存在歧义时保留候选，不靠常识编造尺寸。
+- 优先使用候选的实测坐标；有像素证据才修正。画布宽 {W} 高 {H}，图像坐标原点左上、y 向下；
   ezdxf 的 y 轴向上，请转换：cad_y = {H} - y。
 - 脚本最后保存到：r"{OUT}"
 只输出一个 ```python 代码块，不要解释。
@@ -107,23 +110,9 @@ def _score_dxf(dxf: Path, image: str, png: Path) -> dict:
 
 
 def geometry_json(ir: DrawingIR, selective: bool = True) -> str:
-    ents = []
-    for e in ir.entities:
-        if e.type == "line":
-            if selective:
-                dx, dy = e.end[0] - e.start[0], e.end[1] - e.start[1]
-                if (dx * dx + dy * dy) ** 0.5 < GEOM_MIN_LEN:
-                    continue
-            ents.append({"type": "line", "start": [round(e.start[0], 1), round(e.start[1], 1)],
-                         "end": [round(e.end[0], 1), round(e.end[1], 1)]})
-        elif e.type == "circle":
-            ents.append({"type": "circle", "center": [round(e.center[0], 1), round(e.center[1], 1)],
-                         "radius": round(e.radius, 1)})
-        elif e.type == "arc":
-            ents.append({"type": "arc", "center": [round(e.center[0], 1), round(e.center[1], 1)],
-                         "radius": round(e.radius, 1),
-                         "start_deg": round(e.start_angle, 1), "end_deg": round(e.end_angle, 1)})
-    return json.dumps(ents[:100], ensure_ascii=False)
+    """Lossless geometry contract. selective is retained for caller compatibility."""
+    return json.dumps([{**e.model_dump(exclude_none=True), "id": f"entity_{i:05d}"}
+                       for i, e in enumerate(ir.entities)], ensure_ascii=False)
 
 
 def codegen_proposal(image: str, grounded: bool = True, rounds: int = 2,
@@ -149,7 +138,7 @@ def codegen_proposal(image: str, grounded: bool = True, rounds: int = 2,
             prompt = (CODEGEN_DOC.format(W=w, H=h, OUT=str(dxf_path))
                       + "\n\n请直接看这张图，写出能还原它的完整 Python 脚本。")
             if feedback:
-                prompt += f"\n\n上一版脚本执行报错，请修正后重写完整脚本：\n{feedback[:600]}"
+                prompt += f"\n\n上一版执行或原图校验反馈，请据此修正：\n{feedback[:600]}"
             try:
                 raw = ask_vision(image, prompt, provider=provider,
                                  model=vlm_model, max_tokens=4096)
@@ -162,12 +151,13 @@ def codegen_proposal(image: str, grounded: bool = True, rounds: int = 2,
                 feedback = err
                 continue
             sc = _score_dxf(dxf, image, out / f"{tag}_direct_r{r}.png")
-            if best is None or sc["ssim"] > best["ssim"]:
+            if best is None or combined_score(sc) > combined_score(best):
                 best = sc
-            if sc["ssim"] >= 0.90:
+            feedback = f"像素对照 precision={sc.get('precision')}, recall={sc.get('recall')}, p95_px={sc.get('p95_px')}"
+            if sc.get("f1", 0) >= 0.985:
                 break
         if best is None:
-            best = {"ssim": 0.0, "chamfer_px": float("inf"), "n_entities": -1, "png": "", "dxf": ""}
+            best = {"ssim": 0.0, "chamfer_px": None, "valid": False, "score": 0., "n_entities": -1, "png": "", "dxf": ""}
         best["proposal"] = "direct"
         return best
 
@@ -201,14 +191,14 @@ def codegen_proposal(image: str, grounded: bool = True, rounds: int = 2,
             continue
 
         sc = _score_dxf(dxf, image, out / f"{tag}_r{r}.png")
-        if best is None or sc["ssim"] > best["ssim"]:
+        if best is None or combined_score(sc) > combined_score(best):
             best = sc
-        feedback = (f"SSIM={sc['ssim']}, 图元数={sc['n_entities']}, "
+        feedback = (f"precision={sc.get('precision')}, recall={sc.get('recall')}, p95_px={sc.get('p95_px')}, 图元数={sc['n_entities']}, "
                     f"墨迹比 pred={sc['ink_ratio_pred']} vs gt={sc['ink_ratio_gt']}")
-        if sc["ssim"] >= 0.9:
+        if sc.get("f1", 0) >= 0.985:
             break
 
     if best is None:
-        best = {"ssim": 0.0, "chamfer_px": float("inf"), "n_entities": -1, "png": "", "dxf": ""}
+        best = {"ssim": 0.0, "chamfer_px": None, "valid": False, "score": 0., "n_entities": -1, "png": "", "dxf": ""}
     best["proposal"] = "D" if grounded else "B"
     return best

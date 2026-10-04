@@ -37,7 +37,7 @@ class App:
         box = tk.LabelFrame(root, text=" 选择模式 ", font=FONT, bg="#f5f5f7", padx=12, pady=8)
         box.pack(fill="x", padx=20, pady=12)
         self.mode = tk.StringVar(value="cad")
-        tk.Radiobutton(box, text="① 工程图（规则几何）— 方块 / 圆 / 槽 / 孔，多Agent协同",
+        tk.Radiobutton(box, text="① 工程图（规则几何）— 方块 / 圆 / 槽 / 孔，模板拼装与原图校验",
                        variable=self.mode, value="cad", font=FONT, bg="#f5f5f7").pack(anchor="w")
         tk.Radiobutton(box, text="② 假山（有机形状）— 自由曲线轮廓，中心线提取",
                        variable=self.mode, value="rockery", font=FONT, bg="#f5f5f7").pack(anchor="w", pady=(4, 0))
@@ -99,39 +99,27 @@ class App:
         try:
             OUT_DIR.mkdir(parents=True, exist_ok=True)
             if mode == "cad":
-                self.root.after(0, self.log, "[工程图模式] 多Agent集成流水线启动…")
+                self.root.after(0, self.log, "[工程图模式] 像素测量 → 模板库拼装 → 原图校验…")
                 from core.ensemble import run_ensemble
 
-                res = run_ensemble(path)
+                res = run_ensemble(path, out_dir=OUT_DIR / "engineering")
                 for name, p in res["proposals"].items():
                     mark = "  ← 选中" if name == res["picked"] else ""
                     self.root.after(0, self.log,
-                                    f"  {name}臂  SSIM={p['ssim']:.4f}  实体={p['n_entities']}{mark}")
+                                    f"  {name}  线条F1={p.get('f1', 0):.4f}  实体={p['n_entities']}{mark}")
                 src = Path(res["best"]["dxf"])
-                dst = OUT_DIR / f"{Path(path).stem}_best.dxf"
-                dst.write_bytes(src.read_bytes())
+                dst = src
                 preview = res["best"]["png"]
-                self.root.after(0, self.log, f"选中 {res['picked']}，SSIM={res['best']['ssim']:.4f}")
+                self.root.after(0, self.log,
+                                f"选中 {res['picked']}，采用模板={res['selected_templates']}，"
+                                f"线条F1={res['best']['f1']:.4f}（原图像素容差2px）")
 
-                # 比例尺校准 -> 真实尺寸 DXF
-                try:
-                    from core.calibrate import estimate_scale, scale_ir
-                    from emit.to_dxf import ir_to_dxf
-                    from tools.ocr import run_ocr
-                    from vectorize.vectorize import vectorize
-
-                    ocr = run_ocr(path)
-                    ir_cal = vectorize(path, params={"assemble": False,
-                                                     "dimension_action": "layer"}, ocr=ocr)
-                    est = estimate_scale(ocr, ir_cal)
-                    if est["mm_per_px"]:
-                        ir_s = scale_ir(vectorize(path, ocr=ocr), est["mm_per_px"])
-                        rs = OUT_DIR / f"{Path(path).stem}_realsize.dxf"
-                        ir_to_dxf(ir_s, rs)
-                        self.root.after(0, self.log,
-                                        f"比例尺≈{est['mm_per_px']} mm/px，已导出真实尺寸: {rs.name}")
-                except Exception as e:  # noqa: BLE001
-                    self.root.after(0, self.log, f"比例尺校准跳过: {type(e).__name__}")
+                est = res["calibration"]
+                if est.get("dxf"):
+                    self.root.after(0, self.log, f"同一最佳结果已按比例导出毫米版: {est['dxf']}（请核对原图单位）")
+                else:
+                    self.root.after(0, self.log, "尺寸标注证据不足或冲突，保留像素单位；未生成未经确认的毫米版。")
+                self.root.after(0, self.log, f"叠加对照、误差图与报告: {res['out_dir']}")
             else:
                 self.root.after(0, self.log, "[假山模式] Potrace 轮廓拟合启动…")
                 from core.rockery import run_rockery
@@ -142,7 +130,7 @@ class App:
                 self.root.after(0, self.log,
                                 f"  曲线={res['curves']}  图元={res['n_entities']}  耗时={res['secs']}s")
 
-            self.out_dir = OUT_DIR
+            self.out_dir = Path(res["out_dir"]) if mode == "cad" else OUT_DIR
             self.root.after(0, self.log, f"\n完成！DXF: {dst}")
             self.root.after(0, self.log, f"预览: {preview}")
             self.root.after(0, self.open_file, preview)

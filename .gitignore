@@ -9,6 +9,7 @@ venv/
 
 # --- 生成物 / 缓存 ---
 data/tmp/
+data/engineering/
 data/rockery/Output/
 data/synth/
 demo_out/
