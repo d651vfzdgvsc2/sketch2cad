@@ -27,10 +27,11 @@ from engineering.cleanup import (continuous_paths, assemble_paths, close_fitted_
 from engineering.text import read_annotations, extract_annotations, configure_native_text
 from engineering.review import review_geometry
 from engineering.dimensions import add_native_dimensions
+from engineering.coordinates import CONTRACT
 from tools.image_io import imread, imwrite
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "engineering-cad-v3-review"
+VERSION = "engineering-cad-v4-anchors"
 
 
 def source_version():
@@ -53,9 +54,9 @@ def annotation_mask(shape, ocr):
     return mask
 
 
-def safe_ocr(image):
+def safe_ocr(image, diagnostic_dir=None):
     try:
-        return read_annotations(image), None
+        return read_annotations(image,diagnostic_dir=diagnostic_dir), None
     except Exception as exc:
         # OCR failure cannot destroy otherwise usable line geometry.
         return [], f"OCR unavailable: {type(exc).__name__}"
@@ -121,6 +122,7 @@ def build_proposals(image, ocr=None, templates=True):
     color_entities, patterns = assemble_centerlines(color_entities)
     layers.extend(LayerSpec(name=name, color=1) for name in patterns)
     base_meta = {"source": str(image), "engine": VERSION, "ocr": ocr, "annotations": annotations,
+                 "coordinate_contract": dict(CONTRACT),
                  "linetype_patterns": patterns}
     clean = DrawingIR(width=w, height=h, layers=layers,
                       entities=close_fitted_junctions(assemble_paths(paths, []))+color_entities+texts,
@@ -208,7 +210,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     parent = Path(out_dir).resolve() if out_dir else ROOT / "data" / "engineering"
     out = parent / f"{Path(image).stem}_{digest[:8]}_{uuid.uuid4().hex[:8]}"
     out.mkdir(parents=True, exist_ok=False)
-    ocr, warning = safe_ocr(image) if use_ocr else ([], None)
+    ocr, warning = safe_ocr(image,out/'ocr_preprocessing') if use_ocr else ([], None)
     raw_ocr = ocr
     from engineering.ai_review import configured, review_annotations
     if use_ai_review is None:
@@ -227,6 +229,14 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     irs = {name: review_geometry(ir, source_image) for name, ir in irs.items()}
     for ir in irs.values():
         ir.meta['cad_structure'] = structure_report(ir.entities)
+    if use_ai_review:
+        from engineering.association import review_dimension_associations
+        for name, ir in irs.items():
+            try:
+                ir.meta['dimension_association'] = review_dimension_associations(
+                    image, ir, out/'review'/name, provider)
+            except Exception as exc:
+                ir.meta['dimension_association'] = dict(status='failed',reason=type(exc).__name__,decisions={})
     scores = {}
     for name, ir in irs.items():
         dxf = out / f"{name}.dxf"
@@ -280,6 +290,9 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                   template_count=len(features), selected_templates=(len(irs[picked].meta.get('features', [])) if picked in irs else 0),
                   units="pixels", semantic_enabled=use_semantic)
     report['native_dimensions'] = irs[picked].meta.get('native_dimensions', {}) if picked in irs else {}
+    report['dimension_association'] = irs[picked].meta.get('dimension_association', {'status':'disabled'}) if picked in irs else {}
+    report['coordinate_contract'] = dict(CONTRACT)
+    report['unconfirmed_discoveries'] = [a for a in ocr if a.get('discovery') and a.get('review_status') != 'ai_reviewed']
     if warning:
         report.setdefault("warnings", []).append(warning)
     unresolved = [a for a in report['annotations'] if a['status'].startswith('review')]

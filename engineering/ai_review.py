@@ -47,10 +47,34 @@ def validate_reply(payload, ids):
     return payload['items']
 
 
+def confirmation_sheet(bgr, locations, out, name):
+    """Mark regions in full context; don't ask a VLM to decode raw coordinates."""
+    source=bgr.copy()
+    for region in locations:
+        x0,y0,x1,y1=map(int,region['box'])
+        cv2.rectangle(source,(x0-2,y0-2),(x1+2,y1+2),(210,90,0),1)
+        cv2.putText(source,region['id'],(max(0,x0),max(18,y0-8)),cv2.FONT_HERSHEY_SIMPLEX,.55,(210,90,0),1)
+    scale=min(1.,1200/source.shape[1])
+    source=cv2.resize(source,None,fx=scale,fy=scale,interpolation=cv2.INTER_AREA)
+    sheet=np.full((source.shape[0]+math.ceil(len(locations)/3)*240,1200,3),255,np.uint8)
+    sheet[:source.shape[0],:source.shape[1]]=source
+    for j,region in enumerate(locations):
+        x0,y0,x1,y1=region['box'];pad=max(25,int(min(x1-x0,y1-y0)*1.1))
+        crop=bgr[max(0,int(y0)-pad):min(bgr.shape[0],int(y1)+pad+1),
+                 max(0,int(x0)-pad):min(bgr.shape[1],int(x1)+pad+1)]
+        if y1-y0>(x1-x0)*1.15:crop=np.ascontiguousarray(np.rot90(crop,3))
+        scale=min(380/crop.shape[1],195/crop.shape[0],3)
+        crop=cv2.resize(crop,None,fx=scale,fy=scale,interpolation=cv2.INTER_CUBIC)
+        ox,oy=j%3*400,source.shape[0]+j//3*240
+        cv2.putText(sheet,region['id'],(ox+10,oy+24),cv2.FONT_HERSHEY_SIMPLEX,.65,(210,90,0),1)
+        sheet[oy+35:oy+35+crop.shape[0],ox+10:ox+10+crop.shape[1]]=crop
+    path=Path(out)/f'{name}.png';imwrite(path,sheet)
+    return path
+
+
 def review_annotations(image, ocr, out, provider='dashscope'):
     from tools.vlm import ask_vision
-    # Include low-confidence OCR regions for a second reading, but a model
-    # cannot add regions where the detector found no text evidence.
+    # Include enlarged-tile discoveries, but never accept model-only boxes.
     candidates = select_annotations(ocr)
     for item in sorted(ocr, key=lambda a: -a.get('score', 0)):
         if item.get('score', 0) < .5 or not item.get('text', '').strip(): continue
@@ -112,29 +136,49 @@ def review_annotations(image, ocr, out, provider='dashscope'):
     normalized = lambda text: re.sub(r'\s+', '', text).replace('x', '×')
     disagreements=[]
     for index,item in enumerate(accepted):
-        if item.get('ocr_original') and normalized(item['text']) != normalized(item['ocr_original']):
+        if item.get('ocr_original') and (item.get('discovery') or item.get('box_filter') or normalized(item['text']) != normalized(item['ocr_original'])):
             disagreements.append((index,item))
     if disagreements:
         ids=[f'n{i}' for i in range(len(disagreements))]
         locations=[dict(id=ident,box=item['box']) for ident,(_,item) in zip(ids,disagreements)]
-        prompt=('请独立读取原工程图指定像素框内的标注。不要修改尺寸，不要猜。框为左上原点的[x0,y0,x1,y1]。'
-                f'原图尺寸为{bgr.shape[1]}×{bgr.shape[0]}。'
+        prompt=('请独立读取原工程图指定编号区域的标注。上方是带编号框的整图，下方是相同区域含附近线条的放大图。编号不是原图文字。不要修改尺寸，不要猜，不要把附近引线、箭头当字符。区分小数点和尺寸线。'
                 '每个ID必须返回且只返回一次。text必须为字符串，confidence必须为0到1数值，is_text必须为布尔值。'
                 '只输出JSON对象，严格使用结构：'
                 '{"items":[{"id":"n0","text":"3.2","is_text":true,"confidence":0.99,"reason":"清晰可读"}]}。'
-                '示例内容不是答案。需读取的实际区域：'+json.dumps(locations,ensure_ascii=False))
+                '示例内容不是答案。必须读取的编号：'+json.dumps(ids,ensure_ascii=False))
         try:
-            raw=ask_vision(image,prompt,provider=provider,max_tokens=1800,timeout=55)
+            sheet=confirmation_sheet(bgr,locations,out,'numeric_confirmation')
+            raw=ask_vision(sheet,prompt,provider=provider,max_tokens=2600,timeout=55)
             (out/'numeric_confirmation_response.txt').write_text(raw,encoding='utf8')
             replies=validate_reply(json.loads(raw[raw.find('{'):raw.rfind('}')+1]),set(ids))
             by_id={r['id']:r for r in replies}
         except Exception as exc:
             by_id={};warnings.append(f'numeric confirmation: {type(exc).__name__}')
+        # If two readings disagree, do one fresh contextual reading. Only
+        # matching high-confidence transcriptions may replace the source.
+        conflicts=[(ident,item) for ident,(_,item) in zip(ids,disagreements)
+                   if by_id.get(ident,{}).get('is_text') and by_id[ident]['confidence']>=.95
+                   and normalized(by_id[ident]['text'])!=normalized(item['text'])]
+        third={}
+        if conflicts:
+            try:
+                regions=[dict(id=ident,box=item['box']) for ident,item in conflicts]
+                sheet=confirmation_sheet(bgr,regions,out,'conflict_confirmation')
+                third_prompt=prompt.rsplit('必须读取的编号：',1)[0]+'必须读取的编号：'+json.dumps([i for i,_ in conflicts])
+                raw=ask_vision(sheet,third_prompt,provider=provider,max_tokens=2600,timeout=55)
+                (out/'conflict_confirmation_response.txt').write_text(raw,encoding='utf8')
+                replies=validate_reply(json.loads(raw[raw.find('{'):raw.rfind('}')+1]),{i for i,_ in conflicts})
+                third={r['id']:r for r in replies}
+            except Exception as exc:warnings.append(f'conflict confirmation: {type(exc).__name__}')
         for ident,(index,item) in zip(ids,disagreements):
             confirmation=by_id.get(ident,{})
             ok=(confirmation.get('is_text') and confirmation.get('confidence',0)>=.95
                 and normalized(confirmation.get('text',''))==normalized(item['text']))
+            extra=third.get(ident,{})
+            if extra.get('is_text') and extra.get('confidence',0)>=.95 and normalized(extra.get('text',''))==normalized(confirmation.get('text','')):
+                item['text']=confirmation['text'].strip();ok=True
             item['numeric_confirmation']=dict(accepted=bool(ok),reply=confirmation)
+            if extra:item['numeric_confirmation']['third_read']=extra
             if not ok:
                 item['ai_suggested_text']=item['text']
                 item['text']=item['ocr_original']

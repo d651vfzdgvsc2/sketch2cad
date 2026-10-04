@@ -11,6 +11,7 @@ import math
 import numpy as np
 
 from engineering.calibration import parse_dimension
+from engineering.coordinates import image_to_cad
 
 
 def _segments(ir):
@@ -26,19 +27,47 @@ def _segments(ir):
     return result
 
 
-def plan_dimensions(ir):
+def _split_segments(segments, center, height, record):
+    """Reconnect a dimension interrupted by its label, not arbitrary gaps."""
+    nearby=[];result=[]
+    for i,s in enumerate(segments):
+        if float(np.linalg.norm(s['b']-s['a']))<max(8,height*.5):continue
+        if min(float(np.linalg.norm(p-center)) for p in (s['a'],s['b']))<max(record.get('width_px',height)*1.5,height*3):
+            nearby.append((i,s))
+    for n,(i,a) in enumerate(nearby):
+        for j,b in nearby[n+1:]:
+            if a['entity']==b['entity'] and a['edge']==b['edge']:continue
+            # Choose nearest endpoints; outer endpoints must be on opposite
+            # sides of the text, with two measured witness lines checked later.
+            ends_a=(a['a'],a['b']);ends_b=(b['a'],b['b'])
+            u,v=min(((u,v) for u in (0,1) for v in (0,1)),key=lambda uv:np.linalg.norm(ends_a[uv[0]]-ends_b[uv[1]]))
+            p,q=ends_a[u],ends_b[v];start,end=ends_a[1-u],ends_b[1-v]
+            span=float(np.linalg.norm(end-start));gap=float(np.linalg.norm(q-p))
+            if span<30 or gap<3 or gap>max(record.get('width_px',height)+height*2,height*3):continue
+            direction=(end-start)/span
+            cross=lambda point:abs(float(direction[0]*(point-start)[1]-direction[1]*(point-start)[0]))
+            if max(cross(p),cross(q))>1.2 or cross(center)>height*.75:continue
+            cp=float((center-start)@direction);pp=float((p-start)@direction);qp=float((q-start)@direction)
+            if not pp-height*.25<=cp<=qp+height*.25:continue
+            result.append(dict(entity=a['entity'],edge=a['edge'],a=start,b=end,
+                               parts=[dict(entity=s['entity'],edge=s['edge']) for s in (a,b)],split=True))
+    return result
+
+
+def dimension_candidates(ir):
     segments=_segments(ir)
     texts=[(i,e) for i,e in enumerate(ir.entities) if e.type=='text']
     records={a['text_index']:a for a in ir.meta.get('annotations',[]) if 'text_index' in a}
-    plans=[]; used=set()
+    plans=[]
     for text_index,(entity_index,text) in enumerate(texts):
         parsed=parse_dimension(text.content)
         if parsed['kind']!='linear' or not parsed['value']:continue
         record=records.get(text_index,{})
-        if record.get('score',0)<.85:continue
+        if record.get('score',0)<.85 or record.get('review_status')=='numeric_conflict':continue
         center=np.array(text.pos); height=text.height or 10
         choices=[]
-        for seg_id,segment in enumerate(segments):
+        local_segments=segments+_split_segments(segments,center,height,record)
+        for seg_id,segment in enumerate(local_segments):
             a,b=segment['a'],segment['b']; length=float(np.linalg.norm(b-a))
             if length<max(20,height*.8):continue
             direction=(b-a)/length
@@ -46,12 +75,13 @@ def plan_dimensions(ir):
             # a vertical dimension can legitimately have horizontal numerals.
             projection=float((center-a)@direction)
             offset=abs(float(direction[0]*(center-a)[1]-direction[1]*(center-a)[0]))
-            if not .25*length<=projection<=.75*length or not height*.3<=offset<=height*5:continue
+            min_offset=0 if segment.get('split') else height*.3
+            if not .25*length<=projection<=.75*length or not min_offset<=offset<=height*5:continue
             witnesses=[]
             for point in (a,b):
                 found=[]
                 for witness_id,other in enumerate(segments):
-                    if witness_id==seg_id:continue
+                    if witness_id==seg_id or any(other['entity']==p['entity'] and other['edge']==p['edge'] for p in segment.get('parts',[])):continue
                     c,d=other['a'],other['b']; size=float(np.linalg.norm(d-c))
                     if size<max(6,height*.5):continue
                     vector=(d-c)/size
@@ -65,18 +95,38 @@ def plan_dimensions(ir):
             choices.append((offset,seg_id,witnesses))
         if not choices:continue
         choices.sort(key=lambda x:x[0])
-        offset,seg_id,witnesses=choices[0]
-        if len(choices)>1 and choices[1][0]-offset<height*.5:continue
-        if seg_id in used:continue
-        segment=segments[seg_id]; used.add(seg_id)
-        plans.append(dict(kind='linear',text_entity=entity_index,text_index=text_index,
+        ambiguous=len(choices)>1 and choices[1][0]-choices[0][0]<height*.5
+        for rank,(offset,seg_id,witnesses) in enumerate(choices[:4]):
+            segment=local_segments[seg_id]
+            plans.append(dict(id=f'd{len(plans)}',kind='linear',text_entity=entity_index,text_index=text_index,
                           line_entity=segment['entity'],line_edge=segment['edge'],
+                          line_parts=segment.get('parts',[dict(entity=segment['entity'],edge=segment['edge'])]),
                           p1=segment['a'].tolist(),p2=segment['b'].tolist(),
                           text=text.content,text_position=list(text.pos),text_height=height,
                           text_rotation=text.rotation,text_width=record.get('width_px'),
                           witnesses=[[segments[j]['entity'] for j in group] for group in witnesses],
                           evidence='two_perpendicular_witnesses_and_aligned_label',
+                          label_distance_px=offset,deterministic_choice=rank==0 and not ambiguous,
                           source_label_override=True,associative_to_geometry=False))
+    return plans
+
+
+def plan_dimensions(ir):
+    candidates=dimension_candidates(ir)
+    # Store IDs, never model-generated plans/coordinates. Rebuild evidence at
+    # export so stale, unknown or conflicting associations cannot mutate DXF.
+    decisions=ir.meta.get('dimension_association', {}).get('decisions', {})
+    plans=[];used=set();texts=set()
+    for plan in candidates:
+        decision=decisions.get(str(plan['text_index']))
+        if decision is not None:
+            if decision != plan['id']:continue
+            plan['association']='validated_model_selection'
+        elif not plan['deterministic_choice']:continue
+        else:plan['association']='deterministic_witness_evidence'
+        keys={(p['entity'],p['edge']) for p in plan['line_parts']}
+        if keys&used or plan['text_index'] in texts:continue
+        used.update(keys);texts.add(plan['text_index']);plans.append(plan)
     return plans
 
 
@@ -86,9 +136,9 @@ def add_native_dimensions(doc, ir):
     if 'dimensions' not in doc.layers:doc.layers.new('dimensions',dxfattribs={'color':7,'lineweight':18})
     if 'ENG_DIMENSION' not in doc.appids:doc.appids.new('ENG_DIMENSION')
     plans=plan_dimensions(ir)
+    def flip(p):return image_to_cad(p,ir.height)
     converted=[]; errors=[]; removed_edges={}; removed_lines=set(); removed_texts=set()
     for plan in plans:
-        def flip(p):return (float(p[0]),float(ir.height-p[1]))
         a,b=flip(plan['p1']),flip(plan['p2'])
         # normalize extension direction so standard dimension renderer has a
         # stable local coordinate system for left/right and vertical labels.
@@ -119,8 +169,9 @@ def add_native_dimensions(doc, ir):
             plan['handle']=dim.dimension.dxf.handle
             converted.append(plan)
             removed_texts.add(plan['text_entity'])
-            if plan['line_edge'] is None:removed_lines.add(plan['line_entity'])
-            else:removed_edges.setdefault(plan['line_entity'],set()).add(plan['line_edge'])
+            for part in plan['line_parts']:
+                if part['edge'] is None:removed_lines.add(part['entity'])
+                else:removed_edges.setdefault(part['entity'],set()).add(part['edge'])
         except Exception as exc:
             for entity in list(msp):
                 if entity.dxf.handle not in before_handles:msp.delete_entity(entity)

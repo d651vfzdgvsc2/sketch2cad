@@ -80,5 +80,68 @@ def review_geometry(ir, image):
                             vertices=len(entity.points), radius_px=float(radius),
                             fit_mean_px=float(residual.mean()), max_deviation_px=deviation,
                             perimeter_support=support, attached_entities=sorted(set(attachments))))
+    straighten_and_merge(revised, distance, changes)
     revised.meta['geometry_review'] = dict(changes=changes, rejected=rejected)
     return revised
+
+
+def _straight(points, layer, distance):
+    """Only straighten almost-collinear measured paths, never shortcut steps."""
+    points=np.asarray(points,dtype=float)
+    a,b=points[0],points[-1];length=float(np.linalg.norm(b-a))
+    if length<15:return None
+    direction=(b-a)/length
+    projection=(points-a)@direction
+    deviation=np.abs(direction[0]*(points-a)[:,1]-direction[1]*(points-a)[:,0])
+    if deviation.max()>.55 or (np.diff(projection)<-.05).any():return None
+    deltas=np.diff(points,axis=0);sizes=np.linalg.norm(deltas,axis=1)
+    valid=sizes>.1
+    if not valid.any() or ((deltas[valid]@direction)/sizes[valid]<math.cos(math.radians(2))).any():return None
+    candidate=Entity(type='line',start=tuple(a),end=tuple(b),layer=layer)
+    xy=np.rint(sample_entity(candidate,spacing=.4)).astype(int)
+    if (xy<0).any() or (xy[:,0]>=distance.shape[1]).any() or (xy[:,1]>=distance.shape[0]).any():return None
+    if (distance[xy[:,1],xy[:,0]]<=1.2).mean()<.995:return None
+    return candidate
+
+
+def straighten_and_merge(ir, distance, changes):
+    colors=ir.meta.get('stroke_colors_rgb', [None]*len(ir.entities))
+    if len(colors)!=len(ir.entities):colors=[None]*len(ir.entities)
+    colors=list(colors)
+    for index,e in enumerate(ir.entities):
+        if e.type!='polyline' or e.closed or e.layer.startswith(('text','centerline')):continue
+        candidate=_straight(e.points,e.layer,distance)
+        if candidate:
+            ir.entities[index]=candidate
+            changes.append(dict(entity_id=index,before='polyline',after='line',vertices=len(e.points),evidence='collinear_path_and_source_ink'))
+    # Revisit endpoints after each merge; no bridging of intentional dash gaps.
+    removed=set();merged=True
+    while merged:
+        merged=False
+        ids=[i for i,e in enumerate(ir.entities) if i not in removed and e.type=='line' and not e.layer.startswith(('text','centerline'))]
+        endpoints=[p for i in ids for p in (ir.entities[i].start,ir.entities[i].end)]
+        if not endpoints:break
+        tree=cKDTree(endpoints)
+        for ia,ib in sorted(tree.query_pairs(.55)):
+            i,j=ids[ia//2],ids[ib//2]
+            if i==j:continue
+            a,b=ir.entities[i],ir.entities[j]
+            if a.layer!=b.layer or colors[i]!=colors[j]:continue
+            # Shared endpoints only, with strict collinearity; preserve curve
+            # junctions and short arrowheads as separate measured entities.
+            pa=(a.start,a.end);pb=(b.start,b.end)
+            outer_a,join_a=pa[1-ia%2],pa[ia%2]
+            join_b,outer_b=pb[ib%2],pb[1-ib%2]
+            if math.dist(*pa)<5 or math.dist(*pb)<5:continue
+            if math.dist(join_a,join_b)>1e-6:
+                # A tiny pixel gap still requires ink at the gap itself.
+                mid=np.rint((np.array(join_a)+join_b)/2).astype(int)
+                if not (0<=mid[0]<distance.shape[1] and 0<=mid[1]<distance.shape[0]) or distance[mid[1],mid[0]]>.5:continue
+            candidate=_straight([outer_a,join_a,join_b,outer_b],a.layer,distance)
+            if candidate:
+                ir.entities[i]=candidate;removed.add(j);merged=True
+                changes.append(dict(entity_id=i,consumed_entity_id=j,before='line_fragments',after='line',evidence='shared_collinear_endpoints_and_source_ink'))
+                break
+    if removed:
+        ir.entities=[e for i,e in enumerate(ir.entities) if i not in removed]
+        ir.meta['stroke_colors_rgb']=[c for i,c in enumerate(colors) if i not in removed]

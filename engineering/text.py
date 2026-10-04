@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import math
 import re
+from pathlib import Path
 import cv2
 import numpy as np
 from emit.ir import Entity
+from engineering.coordinates import annotation_anchor, image_to_cad
+from engineering.ocr_preprocess import ocr_views, suspicious_line_box
 
 
-def read_annotations(image):
+def read_annotations(image, discover=True, diagnostic_dir=None):
     # Keep the quadrilateral and baseline direction lost by the shared OCR API.
     from tools.ocr import _engine, _map_box_back
     from tools.image_io import imread
@@ -26,7 +29,70 @@ def read_annotations(image):
             items.append(dict(text=str(text), score=float(score), box=[*lo, *hi],
                               center=((lo+hi)/2).tolist(), quad=quad.tolist(),
                               image_rotation=angle, ocr_rotation=k))
+    if discover:
+        # Overlapping, enlarged quadrants expose small labels hidden by the
+        # detector's full-image resize. Every box is mapped back in code.
+        for tile_id, (xa, ya, xb, yb) in enumerate(ocr_tiles(w, h)):
+            crop = img[ya:yb, xa:xb]
+            scale = min(2., 1600/max(crop.shape[:2]))
+            enlarged = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            sy, sx = enlarged.shape[0]/crop.shape[0], enlarged.shape[1]/crop.shape[1]
+            for k in (0, 1):
+                rotated = enlarged if not k else np.ascontiguousarray(np.rot90(enlarged, k))
+                result, _ = _engine()(rotated)
+                for box, text, score, *_ in result or []:
+                    if float(score) < .5 or not str(text).strip(): continue
+                    quad = map_crop_quad(box, k, enlarged.shape[1], enlarged.shape[0], xa, ya, sx, sy)
+                    lo, hi = quad.min(axis=0), quad.max(axis=0)
+                    candidate = dict(text=str(text), score=float(score), box=[*lo, *hi],
+                                     center=((lo+hi)/2).tolist(), quad=quad.tolist(),
+                                     image_rotation=math.degrees(math.atan2(*(quad[1]-quad[0])[::-1])),
+                                     ocr_rotation=k, discovery='enlarged_tile', tile_id=tile_id)
+                    # Existing coordinates have priority. Tile alternatives
+                    # remain review evidence rather than relocating a label.
+                    match = next((i for i in items if not i.get('discovery') and
+                                  _overlap(i['box'], candidate['box']) > .55), None)
+                    if match:
+                        match.setdefault('crop_readings', []).append(dict(text=str(text), score=float(score)))
+                    else:
+                        items.append(candidate)
+        views=ocr_views(img)
+        if diagnostic_dir:
+            from tools.image_io import imwrite
+            folder=Path(diagnostic_dir);folder.mkdir(parents=True,exist_ok=True)
+            for name,picture in views.items():imwrite(folder/f'{name}.png',picture)
+        for channel in ('binary','clean'):
+            for k in (0,1):
+                picture=views[channel]
+                rotated=picture if not k else np.ascontiguousarray(np.rot90(picture,k))
+                try:result,_=_engine()(rotated)
+                except Exception as exc:
+                    for item in items:item.setdefault('discovery_warnings',[]).append(f'{channel}: {type(exc).__name__}')
+                    continue
+                for box,text,score,*_ in result or []:
+                    if float(score)<.5 or not str(text).strip():continue
+                    quad=np.array(_map_box_back(box,k,w,h));lo,hi=quad.min(axis=0),quad.max(axis=0)
+                    candidate=dict(text=str(text),score=float(score),box=[*lo,*hi],center=((lo+hi)/2).tolist(),
+                                   quad=quad.tolist(),image_rotation=math.degrees(math.atan2(*(quad[1]-quad[0])[::-1])),
+                                   ocr_rotation=k,discovery=f'preprocessed_{channel}')
+                    match=next((i for i in items if not i.get('discovery') and _overlap(i['box'],candidate['box'])>.55),None)
+                    if match:match.setdefault('crop_readings',[]).append(dict(text=str(text),score=float(score),channel=channel))
+                    else:items.append(candidate)
+    for item in items:
+        if suspicious_line_box(item['box'],item['text']):item['box_filter']='suspected_line_requires_review'
     return items
+
+
+def ocr_tiles(width, height):
+    if min(width, height) < 120: return []
+    return [(x0, y0, x1, y1)
+            for y0, y1 in ((0, math.ceil(height*.60)), (int(height*.40), height))
+            for x0, x1 in ((0, math.ceil(width*.60)), (int(width*.40), width))]
+
+
+def map_crop_quad(box, rotation, width, height, x, y, sx, sy):
+    from tools.ocr import _map_box_back
+    return np.array(_map_box_back(box, rotation, width, height))/[sx, sy]+[x, y]
 
 
 def _overlap(a, b):
@@ -42,6 +108,8 @@ def select_annotations(items):
     silently turn Q/omega into a diameter sign or infer a missing dimension.
     """
     candidates = [dict(i) for i in items if i.get('score', 0) >= .80
+                  and (not i.get('discovery') or i.get('review_status') == 'ai_reviewed')
+                  and (not i.get('box_filter') or i.get('review_status') == 'ai_reviewed')
                   and re.search(r'[\w\u4e00-\u9fff]', i.get('text', ''), re.UNICODE)]
     def rank(i):
         # Coverage wins over small confidence changes for contained substrings.
@@ -101,7 +169,7 @@ def extract_annotations(ink, items):
             continue
         # Measure actual ink bounds instead of OCR detector padding.
         gx, gy = gx+xa, gy+ya
-        center = ((gx.min()+gx.max())/2, (gy.min()+gy.max())/2)
+        center = annotation_anchor(item)
         angle = item.get('image_rotation')
         if angle is None:
             angle = -90. if y1-y0 > (x1-x0)*1.15 else 0.
@@ -130,7 +198,8 @@ def extract_annotations(ink, items):
         records.append({**item, 'status': 'review' if uncertain else 'recognized',
                         'separation': separation,
                         'text_index': index, 'width_px': float(width), 'height_px': float(height),
-                        'position': list(center), 'cad_rotation': -angle})
+                        'position': list(center), 'anchor_source': 'ocr_box_center',
+                        'cad_position_pixels': list(image_to_cad(center, h)), 'cad_rotation': -angle})
     return entities, mask, records
 
 
@@ -148,7 +217,7 @@ def configure_native_text(doc, ir):
         entity.dxf.style = style
         entity.dxf.rotation = source.rotation
         entity.dxf.lineweight = -1
-        entity.set_placement((source.pos[0], ir.height-source.pos[1]),
+        entity.set_placement(image_to_cad(source.pos, ir.height),
                              align=TextEntityAlignment.MIDDLE_CENTER)
         if i in records:
             font = fonts.make_font(styles[style], source.height or 2.5)
