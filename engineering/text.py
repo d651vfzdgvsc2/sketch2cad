@@ -80,7 +80,27 @@ def read_annotations(image, discover=True, diagnostic_dir=None):
                     else:items.append(candidate)
     for item in items:
         if suspicious_line_box(item['box'],item['text']):item['box_filter']='suspected_line_requires_review'
-    return items
+    return promote_consensus(items)
+
+
+def promote_consensus(items):
+    """Retain a literal numeral independently repeated across OCR channels."""
+    result=[dict(item) for item in items]
+    normalized=lambda text:re.sub(r'\s+','',text).replace('·','.')
+    for item in result:
+        label=normalized(item.get('text',''))
+        if item.get('score',0)>=.8 or item.get('discovery') or item.get('box_filter'):continue
+        if not re.fullmatch(r'\d{2,}(?:\.\d+)?|\d+\.\d+',label):continue
+        reads=[dict(item,channel='original')]+item.get('crop_readings',[])
+        channels={r.get('channel','enlarged_tile') for r in reads if r.get('score',0)>=.5 and normalized(r.get('text',''))==label}
+        if len(channels)<3 or item.get('score',0)<.5:continue
+        conflict=any(r.get('score',0)>=.75 and normalized(r.get('text',''))!=label for r in reads)
+        conflict|=any(other.get('score',0)>=.8 and _overlap(item['box'],other['box'])>.55 and
+            normalized(other.get('text',''))!=label for other in items)
+        if conflict:continue
+        item.update(ocr_consensus=dict(channels=sorted(channels),original_score=item['score'],literal_text=item['text']),
+                    score=.9,review_status='ocr_consensus')
+    return result
 
 
 def ocr_tiles(width, height):
@@ -129,6 +149,26 @@ def select_annotations(items):
     return sorted(selected, key=lambda i: (i['box'][1], i['box'][0]))
 
 
+def crossing_strokes(ink,box):
+    """Protect measured strokes continuing outside a label, including diagonals."""
+    h,w=ink.shape;x0,y0,x1,y1=map(float,box)
+    margin=max(18,int(min(x1-x0,y1-y0)*1.5))
+    xa,ya=max(0,int(x0)-margin),max(0,int(y0)-margin)
+    xb,yb=min(w,int(x1)+margin+1),min(h,int(y1)+margin+1)
+    local=ink[ya:yb,xa:xb];protected=np.zeros_like(local)
+    size=max(10,min(x1-x0,y1-y0))
+    lines=cv2.HoughLinesP(local,1,np.pi/360,threshold=max(10,int(size*.65)),
+                          minLineLength=max(15,int(size*1.5)),maxLineGap=2)
+    for line in ([] if lines is None else np.asarray(lines).reshape(-1,4)):
+        a,b=np.array(line[:2],float)+[xa,ya],np.array(line[2:],float)+[xa,ya]
+        # A glyph stroke confined to the detector region is never protected.
+        outside=lambda p:p[0]<x0-5 or p[0]>x1+5 or p[1]<y0-5 or p[1]>y1+5
+        if not outside(a) and not outside(b):continue
+        cv2.line(protected,tuple(line[:2]),tuple(line[2:]),255,2)
+    result=np.zeros_like(ink);result[ya:yb,xa:xb]=protected
+    return result
+
+
 def extract_annotations(ink, items):
     """Remove contained glyph components, protecting lines crossing OCR boxes.
 
@@ -152,21 +192,22 @@ def extract_annotations(ink, items):
                 contained.append(idx)
         glyph = np.isin(labels[ya:yb, xa:xb], contained)
         separation = 'isolated_components'
-        if item.get('review_status') == 'ai_reviewed':
+        if item.get('review_status') in ('ai_reviewed','ocr_consensus'):
             # A reviewed label can touch a dimension/table line. Preserve
             # strokes that extend beyond its box, remove the remaining glyphs.
-            protected = np.zeros_like(ink)
-            for kernel in (np.ones((1, max(15, xb-xa+8)), np.uint8),
-                           np.ones((max(15, yb-ya+8), 1), np.uint8)):
-                protected |= cv2.morphologyEx(ink, cv2.MORPH_OPEN, kernel)
-            protected = cv2.dilate(protected, np.ones((3, 3), np.uint8))
+            protected = crossing_strokes(ink,item['box'])
             touching = (ink[ya:yb, xa:xb] > 0) & (protected[ya:yb, xa:xb] == 0)
             glyph |= touching
             separation = 'reviewed_text_with_crossing_lines_preserved'
         gy, gx = np.where(glyph)
         if len(gx) < 3:
-            records.append({**item, 'status': 'review_no_isolated_glyphs'})
-            continue
+            if item.get('review_status') not in ('ai_reviewed','ocr_consensus') or np.count_nonzero(ink[ya:yb,xa:xb])<3:
+                records.append({**item, 'status': 'review_no_isolated_glyphs'})
+                continue
+            # Confirmed text still deserves a native entity when every source
+            # pixel touches a protected stroke. Do not erase ambiguous geometry.
+            gx=np.array([int(x0),int(x1)])-xa;gy=np.array([int(y0),int(y1)])-ya
+            separation='native_text_fallback_with_geometry_retained'
         # Measure actual ink bounds instead of OCR detector padding.
         gx, gy = gx+xa, gy+ya
         center = annotation_anchor(item)

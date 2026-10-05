@@ -183,7 +183,7 @@ def review_annotations(image, ocr, out, provider='dashscope'):
                 item['ai_suggested_text']=item['text']
                 item['text']=item['ocr_original']
                 item['score']=item['ocr_original_score']
-                item['review_status']='numeric_conflict'
+                item['review_status']='ocr_consensus' if item.get('ocr_consensus') else 'numeric_conflict'
             for record in records:
                 if record['id']==item['ai_review_id']:
                     record['numeric_confirmation']=item['numeric_confirmation']

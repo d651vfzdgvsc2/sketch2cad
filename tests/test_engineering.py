@@ -279,6 +279,9 @@ def test_explicit_offline_entry_and_runs_are_isolated(tmp_path, monkeypatch):
         assert (Path(result['out_dir'])/'overlay.png').is_file()
         assert (Path(result['out_dir'])/'report.json').is_file()
         assert not ezdxf.readfile(result['best']['dxf']).audit().has_errors
+        delivery=Path(result['delivery']['directory'])
+        assert list(delivery.iterdir())==[Path(result['delivery']['dxf'])]
+        assert delivery!=Path(result['out_dir'])
 
 
 def test_gui_engineering_worker_uses_selected_result(tmp_path, monkeypatch):
@@ -290,7 +293,8 @@ def test_gui_engineering_worker_uses_selected_result(tmp_path, monkeypatch):
     selected_dir.mkdir()
     selected = selected_dir/'best.dxf'
     selected.write_text('selected geometry', encoding='utf8')
-    result = {'out_dir': str(selected_dir), 'picked': 'LIBRARY', 'selected_templates': 2,
+    result = {'out_dir': str(tmp_path/'internal'), 'picked': 'LIBRARY', 'selected_templates': 2,
+              'delivery': {'directory':str(selected_dir),'dxf':str(selected),'units':'pixels'},
               'best': {'dxf': str(selected), 'png': str(selected_dir/'best.png'), 'f1': .98},
               'proposals': {'LIBRARY': {'f1': .98, 'n_entities': 10}},
               'calibration': {'status': 'needs_review', 'mm_per_px': None}}

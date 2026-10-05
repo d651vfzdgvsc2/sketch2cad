@@ -107,19 +107,17 @@ class App:
                     mark = "  ← 选中" if name == res["picked"] else ""
                     self.root.after(0, self.log,
                                     f"  {name}  线条F1={p.get('f1', 0):.4f}  实体={p['n_entities']}{mark}")
-                src = Path(res["best"]["dxf"])
-                dst = src
+                dst = Path(res['delivery']['dxf'])
                 preview = res["best"]["png"]
                 self.root.after(0, self.log,
                                 f"选中 {res['picked']}，采用模板={res['selected_templates']}，"
                                 f"线条F1={res['best']['f1']:.4f}（原图像素容差2px）")
 
-                est = res["calibration"]
-                if est.get("dxf"):
-                    self.root.after(0, self.log, f"同一最佳结果已按比例导出毫米版: {est['dxf']}（请核对原图单位）")
+                if res['delivery']['units']=='mm':
+                    self.root.after(0, self.log, "最终 CAD 已按比例导出为毫米单位。")
                 else:
                     self.root.after(0, self.log, "尺寸标注证据不足或冲突，保留像素单位；未生成未经确认的毫米版。")
-                self.root.after(0, self.log, f"叠加对照、误差图与报告: {res['out_dir']}")
+                self.root.after(0, self.log, "结果文件夹只保留最终选出的 CAD 文件。")
             else:
                 self.root.after(0, self.log, "[假山模式] Potrace 轮廓拟合启动…")
                 from core.rockery import run_rockery
@@ -130,7 +128,7 @@ class App:
                 self.root.after(0, self.log,
                                 f"  曲线={res['curves']}  图元={res['n_entities']}  耗时={res['secs']}s")
 
-            self.out_dir = Path(res["out_dir"]) if mode == "cad" else OUT_DIR
+            self.out_dir = Path(res['delivery']['directory']) if mode == "cad" else OUT_DIR
             self.root.after(0, self.log, f"\n完成！DXF: {dst}")
             self.root.after(0, self.log, f"预览: {preview}")
             self.root.after(0, self.open_file, preview)

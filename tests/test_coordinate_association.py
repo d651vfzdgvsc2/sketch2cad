@@ -110,7 +110,7 @@ def test_dimension_line_split_around_text_exports_one_native_dimension(tmp_path)
     path=tmp_path/'split.dxf';report=write_ir(ir,path)
     assert report['native_dimensions']==1
     doc=ezdxf.readfile(path)
-    assert len(doc.modelspace().query('LINE'))==2
+    assert len(doc.modelspace().query('LINE'))==0 # entire annotation is owned
     assert doc.modelspace().query('DIMENSION')[0].get_measurement()==pytest.approx(200)
     assert not doc.audit().has_errors
 

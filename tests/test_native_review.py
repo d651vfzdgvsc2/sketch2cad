@@ -56,13 +56,15 @@ def test_actual_dxf_contains_dimension_and_native_block_text(tmp_path):
     doc=ezdxf.readfile(path);msp=doc.modelspace()
     assert len(msp.query('DIMENSION'))==1
     assert len(msp.query('TEXT'))==0
-    assert len(msp.query('LINE'))==2  # original witnesses remain
+    assert len(msp.query('LINE'))==0  # witnesses now belong to the DIMENSION
     dimension=msp.query('DIMENSION')[0]
     assert dimension.dxf.text=='100'
     assert dimension.get_measurement()==pytest.approx(200) # no invented scale
     texts=list(doc.blocks.get(dimension.dxf.geometry).query('MTEXT'))
     assert len(texts)==1 and texts[0].plain_text()=='100'
     assert dimension.has_xdata('ENG_DIMENSION')
+    assert report['owned_extension_segments']==2
+    assert len(doc.blocks.get(dimension.dxf.geometry).query('LINE'))>=3
     assert not doc.audit().has_errors
 
 

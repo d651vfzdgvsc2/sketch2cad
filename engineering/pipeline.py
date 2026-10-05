@@ -28,10 +28,11 @@ from engineering.text import read_annotations, extract_annotations, configure_na
 from engineering.review import review_geometry
 from engineering.dimensions import add_native_dimensions
 from engineering.coordinates import CONTRACT
+from engineering.artifacts import review_artifacts
 from tools.image_io import imread, imwrite
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "engineering-cad-v4-anchors"
+VERSION = "engineering-cad-v6-local-repair"
 
 
 def source_version():
@@ -208,7 +209,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     image = str(Path(image).resolve())
     digest = hashlib.sha256(Path(image).read_bytes()).hexdigest()
     parent = Path(out_dir).resolve() if out_dir else ROOT / "data" / "engineering"
-    out = parent / f"{Path(image).stem}_{digest[:8]}_{uuid.uuid4().hex[:8]}"
+    run_name = f"{Path(image).stem}_{digest[:8]}_{uuid.uuid4().hex[:8]}"
+    out = parent / '.work' / run_name
     out.mkdir(parents=True, exist_ok=False)
     ocr, warning = safe_ocr(image,out/'ocr_preprocessing') if use_ocr else ([], None)
     raw_ocr = ocr
@@ -226,7 +228,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     report['ai_text_review'] = ai_report
     report['ocr_before_review'] = raw_ocr
     source_image = imread(image)
-    irs = {name: review_geometry(ir, source_image) for name, ir in irs.items()}
+    irs = {name: review_artifacts(review_geometry(ir, source_image),source_image) for name, ir in irs.items()}
     for ir in irs.values():
         ir.meta['cad_structure'] = structure_report(ir.entities)
     if use_ai_review:
@@ -252,6 +254,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         scores[name]['geometry'] = compare(rendered, source)
         scores[name]['cad_structure'] = ir.meta['cad_structure']
         scores[name]['native_dimensions'] = dimensions['native_dimensions']
+        scores[name]['native_leaders'] = dimensions['native_leaders']
+        scores[name]['artifact_review'] = ir.meta.get('artifact_review',{})
         scores[name]['geometry_review'] = ir.meta['geometry_review']
         scores[name].update(proposal=name, ir=str(out / f"{name}.json"))
     if legacy_proposals:
@@ -268,14 +272,27 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         structure = candidate.get('cad_structure', {})
         return (combined_score(candidate.get('geometry', candidate))
                 - .20*structure.get('short_segment_fraction', 1.)
+                + .003*min(40,candidate.get('native_dimensions',0)+candidate.get('native_leaders',0))
                 - (.15 if ocr and not structure.get('native_texts') else 0.))
     picked = max(eligible, key=lambda k: cad_score(eligible[k]))
     # Templates must preserve geometry completeness and reduce fragmentation.
     lib = eligible.get("LIBRARY")
     best = eligible[picked]
-    if lib and cad_score(lib) >= cad_score(best)-.005 and lib['geometry']['recall'] >= best.get('geometry', best)['recall']-.005:
+    if (lib and cad_score(lib) >= cad_score(best)-.005
+        and lib['geometry']['recall'] >= best.get('geometry', best)['recall']-.005
+        and lib.get('native_dimensions',0)+lib.get('native_leaders',0)>=best.get('native_dimensions',0)+best.get('native_leaders',0)):
         picked = "LIBRARY"
     selected = dict(scores[picked])
+    if picked in irs:
+        from engineering.local_repair import repair_selected
+        try:
+            irs[picked],selected,report['local_repair']=repair_selected(image,irs[picked],selected,out/'repair',
+                use_ai_review=use_ai_review,provider=provider,use_ocr=use_ocr)
+        except Exception as exc:
+            report['local_repair']=dict(status='failed_retained_original',reason=type(exc).__name__)
+        report['annotations']=irs[picked].meta.get('annotations',[])
+        ocr=irs[picked].meta.get('ocr',ocr)
+        report['ocr']=ocr
     shutil.copy2(selected["dxf"], out / "best.dxf")
     selected["dxf"] = str(out / "best.dxf")
     # All proposals are scored in pixels, including optional generated scripts.
@@ -320,6 +337,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     except Exception as exc:
         report["calibration"] = {"status": "needs_review", "mm_per_px": None,
                                  "reason": f"Calibration unavailable: {type(exc).__name__}"}
+    from engineering.delivery import publish_result
+    report['delivery']=publish_result(selected,report['calibration'],parent/run_name,Path(image).stem)
     report["seconds"] = round(time.perf_counter()-start, 2)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
     return report
