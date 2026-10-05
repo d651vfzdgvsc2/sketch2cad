@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import sys
 import threading
+import queue
+import time
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, scrolledtext
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "demo_out"
@@ -24,6 +26,9 @@ class App:
         self.root = root
         self.image_path: str | None = None
         self.out_dir: Path | None = None
+        self.progress_events=queue.SimpleQueue()
+        self.progress_running=False
+        self.progress_started=0.;self.stage_started=0.;self.last_step=-1
 
         root.title("图纸矢量化系统")
         root.geometry("720x540")
@@ -65,10 +70,60 @@ class App:
                                   command=self.open_out, state="disabled", width=14)
         self.open_btn.pack(side="left", padx=10)
 
+        # Engineering status is driven by real pipeline events on the UI thread.
+        self.progress_panel=tk.LabelFrame(root,text=' 工程图处理进度 ',font=FONT,
+                                         bg='#f5f5f7',padx=12,pady=7)
+        self.progress_panel.pack(fill='x',padx=20,pady=(0,6))
+        self.progress_message=tk.StringVar(value='选择图片后，点击“开始处理”')
+        self.progress_label=tk.Label(self.progress_panel,textvariable=self.progress_message,
+                                    font=FONT,bg='#f5f5f7',fg='#333',anchor='w',wraplength=650,justify='left')
+        self.progress_label.pack(fill='x')
+        self.progress_bar=ttk.Progressbar(self.progress_panel,maximum=100,mode='determinate')
+        self.progress_bar.pack(fill='x',pady=(6,4))
+        self.progress_time=tk.StringVar(value='步骤进度 0% · 已用 00:00')
+        tk.Label(self.progress_panel,textvariable=self.progress_time,font=("Microsoft YaHei UI",9),
+                 bg='#f5f5f7',fg='#666',anchor='w').pack(fill='x')
+        self.mode.trace_add('write',self._show_progress)
+
         # 日志
         self.log_box = scrolledtext.ScrolledText(root, height=14, font=("Consolas", 9),
                                                  bg="white", state="disabled")
         self.log_box.pack(fill="both", expand=True, padx=20, pady=(4, 16))
+        root.after(100,self._poll_progress)
+
+    def _show_progress(self,*_):
+        if self.mode.get()=='cad' or self.progress_running:
+            if not self.progress_panel.winfo_manager():
+                self.progress_panel.pack(fill='x',padx=20,pady=(0,6),before=self.log_box)
+        else:self.progress_panel.pack_forget()
+
+    @staticmethod
+    def _clock(seconds):
+        seconds=max(0,int(seconds));return f'{seconds//60:02d}:{seconds%60:02d}'
+
+    def _poll_progress(self):
+        try:
+            while True:
+                event=self.progress_events.get_nowait()
+                if 'percent' in event:self.progress_bar['value']=event['percent']
+                self.progress_message.set(event.get('message','处理中…'))
+                if event.get('step')!=self.last_step and 'step' in event:
+                    self.last_step=event['step'];self.stage_started=time.monotonic()
+                    self.log(f"[{event['step']}/{event.get('total',11)}] {event['message']}")
+                if event.get('delivery'):
+                    self.out_dir=Path(event['delivery']['directory'])
+                    self.open_btn.configure(state='normal')
+                if event.get('state') in ('completed','failed'):
+                    self.progress_running=False
+                    if event['state']=='failed':self.progress_label.configure(fg='#a33')
+                    self._show_progress()
+                elapsed=event.get('elapsed_seconds')
+                if elapsed is not None:self.progress_started=time.monotonic()-elapsed
+                self.progress_time.set(f"步骤进度 {int(float(self.progress_bar['value']))}% · 已用 {self._clock(time.monotonic()-self.progress_started)}")
+        except queue.Empty:pass
+        if self.progress_running:
+            self.progress_time.set(f"步骤进度 {int(float(self.progress_bar['value']))}% · 已用 {self._clock(time.monotonic()-self.progress_started)} · 当前步骤 {self._clock(time.monotonic()-self.stage_started)}")
+        self.root.after(100,self._poll_progress)
 
     def log(self, msg: str) -> None:
         self.log_box.configure(state="normal")
@@ -93,6 +148,13 @@ class App:
         self.run_btn.configure(state="disabled", text="处理中…")
         self.open_btn.configure(state="disabled")
         mode = self.mode.get()
+        if mode=='cad':
+            while not self.progress_events.empty():self.progress_events.get_nowait()
+            self.out_dir=None;self.progress_running=True;self.last_step=-1
+            self.progress_started=self.stage_started=time.monotonic()
+            self.progress_bar['value']=0;self.progress_label.configure(fg='#333')
+            self.progress_message.set('准备处理工程图…')
+            self._show_progress()
         threading.Thread(target=self.worker, args=(self.image_path, mode), daemon=True).start()
 
     def worker(self, path: str, mode: str) -> None:
@@ -102,7 +164,7 @@ class App:
                 self.root.after(0, self.log, "[工程图模式] 像素测量 → 模板库拼装 → 原图校验…")
                 from core.ensemble import run_ensemble
 
-                res = run_ensemble(path, out_dir=OUT_DIR / "engineering")
+                res = run_ensemble(path, out_dir=OUT_DIR / "engineering",progress=self.progress_events.put)
                 for name, p in res["proposals"].items():
                     mark = "  ← 选中" if name == res["picked"] else ""
                     self.root.after(0, self.log,
@@ -134,6 +196,7 @@ class App:
             self.root.after(0, self.open_file, preview)
             self.root.after(0, self.open_btn.configure, {"state": "normal"})
         except Exception as e:  # noqa: BLE001
+            if mode=='cad':self.progress_events.put(dict(state='failed',message='处理失败，请查看下方错误信息'))
             self.root.after(0, self.log, f"\n[错误] {type(e).__name__}: {e}")
         finally:
             self.root.after(0, self.run_btn.configure, {"state": "normal", "text": "开始处理"})

@@ -301,6 +301,7 @@ def test_gui_engineering_worker_uses_selected_result(tmp_path, monkeypatch):
     monkeypatch.setattr(core.ensemble, 'run_ensemble', lambda *a, **kw: result)
     monkeypatch.setattr(gui, 'OUT_DIR', tmp_path/'output')
     app = gui.App.__new__(gui.App)
+    app.progress_events = gui.queue.SimpleQueue()
     messages, opened = [], []
     app.root = SimpleNamespace(after=lambda delay, fn, *args: fn(*args))
     app.log = messages.append

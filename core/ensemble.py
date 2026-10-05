@@ -118,7 +118,7 @@ def run_ensemble(image: str, rounds: int = 2, use_b: bool = False, use_d: bool =
                  use_vlm: bool = False, use_mv: bool = False, use_cl: bool = False,
                  use_spec: bool = False, use_cache: bool = False, *, out_dir=None,
                  use_templates=True, use_ocr=True, use_semantic=False, use_cv=False,
-                 use_ai_review=None):
+                 use_ai_review=None, progress=None):
     """Measured reconstruction, with bounded visual review when configured.
 
     use_cache remains accepted for compatibility; old cached files are not read.
@@ -143,4 +143,4 @@ def run_ensemble(image: str, rounds: int = 2, use_b: bool = False, use_d: bool =
                                                              out_dir=out, tag="DS", provider="deepseek")
     return run_engineering(image, out_dir, use_ocr=use_ocr, use_templates=use_templates,
                            use_semantic=use_semantic, legacy_proposals=proposals,
-                           use_ai_review=use_ai_review)
+                           use_ai_review=use_ai_review,progress=progress)

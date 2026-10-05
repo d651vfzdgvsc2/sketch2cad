@@ -30,10 +30,12 @@ from engineering.dimensions import add_native_dimensions
 from engineering.coordinates import CONTRACT
 from engineering.artifacts import review_artifacts
 from engineering.linework import review_linework
+from engineering.dash_axes import review_dash_axes
+from engineering.hatching import add_native_hatches
 from tools.image_io import imread, imwrite
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "engineering-cad-v7-linework-review"
+VERSION = "engineering-cad-v9-progress-performance"
 
 
 def source_version():
@@ -64,7 +66,7 @@ def safe_ocr(image, diagnostic_dir=None):
         return [], f"OCR unavailable: {type(exc).__name__}"
 
 
-def write_ir(ir, target):
+def write_ir(ir, target, progress=None):
     doc = ir_to_doc(ir)
     doc.units = 0  # DXF $INSUNITS=0: pixel coordinates must not pretend to be mm.
     # CAD lineweights describe plotted pen widths, never source pixel thickness.
@@ -76,11 +78,15 @@ def write_ir(ir, target):
         doc.linetypes.new(name, dxfattribs={'description': 'Measured engineering dashes', 'pattern': pattern})
         doc.layers.get(layer).dxf.linetype = name
     configure_native_text(doc, ir)
+    original_entities = list(doc.modelspace())
     for entity, rgb in zip(doc.modelspace(), ir.meta.get("stroke_colors_rgb", [])):
         if rgb is not None:
             entity.rgb = tuple(rgb)
+    if progress:progress.detail('生成 CAD 原生文字、尺寸和引线')
     dimension_report = add_native_dimensions(doc, ir)
     ir.meta['native_dimensions'] = dimension_report
+    if progress:progress.detail('生成 CAD 原生剖面填充')
+    ir.meta['native_hatches'] = add_native_hatches(doc, ir, original_entities)
     doc.saveas(str(target))
     return dimension_report
 
@@ -205,7 +211,23 @@ def save_diagnostics(image, predicted, out):
 
 def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                     use_semantic=False, provider="dashscope", legacy_proposals=None,
-                    use_ai_review=None):
+                    use_ai_review=None, progress=None):
+    from engineering.progress import ProgressReporter
+    from engineering.dimensions import candidate_cache_scope
+    tracker=ProgressReporter(progress)
+    try:
+        with candidate_cache_scope():
+            return _run_engineering(image,out_dir,use_ocr=use_ocr,use_templates=use_templates,
+                use_semantic=use_semantic,provider=provider,legacy_proposals=legacy_proposals,
+                use_ai_review=use_ai_review,_progress=tracker)
+    except Exception as exc:
+        tracker.fail(exc)
+        raise
+
+
+def _run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
+                     use_semantic=False, provider="dashscope", legacy_proposals=None,
+                     use_ai_review=None, _progress):
     start = time.perf_counter()
     image = str(Path(image).resolve())
     digest = hashlib.sha256(Path(image).read_bytes()).hexdigest()
@@ -213,6 +235,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     run_name = f"{Path(image).stem}_{digest[:8]}_{uuid.uuid4().hex[:8]}"
     out = parent / '.work' / run_name
     out.mkdir(parents=True, exist_ok=False)
+    _progress.bind(out)
+    _progress.phase(1,'识别工程图文字和数字')
     ocr, warning = safe_ocr(image,out/'ocr_preprocessing') if use_ocr else ([], None)
     raw_ocr = ocr
     from engineering.ai_review import configured, review_annotations
@@ -220,31 +244,40 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         from core.config import get
         use_ai_review = configured() and get('ENGINEERING_AI_REVIEW', '1') != '0'
     ai_report = {'status': 'disabled'}
+    _progress.phase(2,'复核文字和数字')
     if use_ai_review and use_ocr and ocr:
         try:
             ocr, ai_report = review_annotations(image, ocr, out/'review', provider)
         except Exception as exc:
             ai_report = {'status': 'failed', 'reason': type(exc).__name__}
+    _progress.phase(3,'提取线条、圆孔和零件轮廓')
     irs, features, report = build_proposals(image, ocr, use_templates)
     report['ai_text_review'] = ai_report
     report['ocr_before_review'] = raw_ocr
     source_image = imread(image)
-    irs = {name: review_artifacts(review_linework(review_geometry(ir, source_image),source_image),source_image) for name, ir in irs.items()}
+    _progress.phase(4,'清理杂线并对齐虚线')
+    for index,(name,ir) in enumerate(list(irs.items()),1):
+        _progress.detail(f'清理杂线并对齐虚线（方案 {index}/{len(irs)}）')
+        irs[name]=review_dash_axes(review_artifacts(review_linework(review_geometry(ir, source_image),source_image),source_image),source_image)
     for ir in irs.values():
         ir.meta['cad_structure'] = structure_report(ir.entities)
+    _progress.phase(5,'确认尺寸文字与标注线的关联')
     if use_ai_review:
         from engineering.association import review_dimension_associations
         for name, ir in irs.items():
+            _progress.detail('确认尺寸关联（连续线条方案）' if name=='CLEAN' else '确认尺寸关联（模板方案）')
             try:
                 ir.meta['dimension_association'] = review_dimension_associations(
                     image, ir, out/'review'/name, provider)
             except Exception as exc:
                 ir.meta['dimension_association'] = dict(status='failed',reason=type(exc).__name__,decisions={})
     scores = {}
+    _progress.phase(6,'生成 CAD 文件并检查预览')
     for name, ir in irs.items():
         dxf = out / f"{name}.dxf"
-        dimensions = write_ir(ir, dxf)
+        dimensions = write_ir(ir, dxf, progress=_progress)
         (out / f"{name}.json").write_text(ir.to_json(), encoding="utf-8")
+        _progress.detail(f'渲染并校验 CAD（方案 {len(scores)+1}/{len(irs)}）')
         scores[name] = score_dxf(dxf, image, out / f"{name}.png")
         # Compare geometry independently of font glyph differences. The full
         # image score is retained as a diagnostic, not the acceptance criterion.
@@ -258,6 +291,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         scores[name]['native_leaders'] = dimensions['native_leaders']
         scores[name]['artifact_review'] = ir.meta.get('artifact_review',{})
         scores[name]['linework_review'] = ir.meta.get('linework_review',{})
+        scores[name]['dash_axis_review'] = ir.meta.get('dash_axis_review',{})
+        scores[name]['native_hatches'] = ir.meta.get('native_hatches',{}).get('native_hatches',0)
         scores[name]['geometry_review'] = ir.meta['geometry_review']
         scores[name].update(proposal=name, ir=str(out / f"{name}.json"))
     if legacy_proposals:
@@ -266,6 +301,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                 scores[name] = fn(image, out)
             except Exception as exc:
                 report.setdefault("warnings", []).append(f"{name} failed: {type(exc).__name__}")
+    _progress.phase(7,'比较方案并选择最终 CAD')
     eligible = {k: v for k, v in scores.items()
                 if v.get("valid", False) and Path(v.get("dxf", "")).is_file()}
     if not eligible:
@@ -285,6 +321,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         and lib.get('native_dimensions',0)+lib.get('native_leaders',0)>=best.get('native_dimensions',0)+best.get('native_leaders',0)):
         picked = "LIBRARY"
     selected = dict(scores[picked])
+    _progress.phase(8,'检查是否有遗漏的文字和标注')
     if picked in irs:
         from engineering.local_repair import repair_selected
         try:
@@ -310,6 +347,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                   units="pixels", semantic_enabled=use_semantic)
     report['native_dimensions'] = irs[picked].meta.get('native_dimensions', {}) if picked in irs else {}
     report['linework_review'] = irs[picked].meta.get('linework_review', {}) if picked in irs else {}
+    report['dash_axis_review'] = irs[picked].meta.get('dash_axis_review', {}) if picked in irs else {}
+    report['native_hatches'] = irs[picked].meta.get('native_hatches', {}) if picked in irs else {}
     report['dimension_association'] = irs[picked].meta.get('dimension_association', {'status':'disabled'}) if picked in irs else {}
     report['coordinate_contract'] = dict(CONTRACT)
     report['unconfirmed_discoveries'] = [a for a in ocr if a.get('discovery') and a.get('review_status') != 'ai_reviewed']
@@ -323,6 +362,17 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                             'reason': 'Automatic reconstruction requires topology, text and dimension review; image score is not CAD acceptance',
                             'native_cad_application_verified': False,
                             'manufacturing_dimensions_verified': False}
+    _progress.phase(9,'确认比例并保存最终 CAD')
+    from engineering.calibration import calibrate_selected
+    try:
+        report['calibration']=calibrate_selected(selected,ocr,out)
+    except Exception as exc:
+        report['calibration']={'status':'needs_review','mm_per_px':None,
+                               'reason':f'Calibration unavailable: {type(exc).__name__}'}
+    from engineering.delivery import publish_result
+    report['delivery']=publish_result(selected,report['calibration'],parent/run_name,Path(image).stem)
+    _progress.ready(report['delivery'],selected['png'])
+    _progress.phase(10,'CAD 已生成，进行最终图像复核')
     if use_semantic and features:
         try:
             report["semantic_review"] = semantic_review(image, features, ocr, provider)
@@ -334,14 +384,8 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
             {'entity_count': selected['n_entities'],
              'native_dimensions': selected.get('native_dimensions', 0),
              'geometry_review': selected.get('geometry_review', {})}, out, provider)
-    from engineering.calibration import calibrate_selected
-    try:
-        report["calibration"] = calibrate_selected(selected, ocr, out)
-    except Exception as exc:
-        report["calibration"] = {"status": "needs_review", "mm_per_px": None,
-                                 "reason": f"Calibration unavailable: {type(exc).__name__}"}
-    from engineering.delivery import publish_result
-    report['delivery']=publish_result(selected,report['calibration'],parent/run_name,Path(image).stem)
     report["seconds"] = round(time.perf_counter()-start, 2)
+    report['stage_timings']=list(_progress.timings)
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+    _progress.complete()
     return report

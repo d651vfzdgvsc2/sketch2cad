@@ -11,6 +11,9 @@ import math
 import re
 import hashlib
 import json
+import copy
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 import cv2
 import numpy as np
@@ -19,6 +22,28 @@ from engineering.calibration import parse_dimension
 from engineering.coordinates import image_to_cad
 from engineering.dimension_graphics import (collect_graphics,add_measured_graphics,
                                            remaining_intervals,part_key,arrow_size,claims_overlap,ownership_parts)
+
+
+_candidate_cache = ContextVar('engineering_dimension_candidate_cache', default=None)
+
+
+@contextmanager
+def candidate_cache_scope():
+    """One run only; candidates never leak between drawings or worker threads."""
+    token = _candidate_cache.set({})
+    try:
+        yield
+    finally:
+        _candidate_cache.reset(token)
+
+
+def _candidate_key(ir):
+    source = ir.meta.get('source')
+    path = Path(source) if source else None
+    checksum = hashlib.sha256(path.read_bytes()).hexdigest() if path and path.is_file() else None
+    payload = dict(width=ir.width,height=ir.height,entities=[e.model_dump() for e in ir.entities],
+                   annotations=ir.meta.get('annotations',[]),source=source,source_checksum=checksum)
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode('utf8')).hexdigest()
 
 
 def _segments(ir, include_centerlines=False):
@@ -82,6 +107,9 @@ def _raster_segments(ir,center,height,record,segments,image=None):
     # only strokes sufficiently offset from the locked text center, and
     # require two vector witnesses below; never classify an isolated glyph.
     result=[]
+    starts=np.array([s['a'] for s in segments],dtype=float).reshape(-1,2)
+    vectors=np.array([s['b']-s['a'] for s in segments],dtype=float).reshape(-1,2)
+    lengths2=np.einsum('ij,ij->i',vectors,vectors)
     for axis in (0,1):
         kernel=np.ones((1,7) if axis==0 else (7,1),np.uint8)
         strokes=cv2.morphologyEx(ink,cv2.MORPH_OPEN,kernel)
@@ -93,8 +121,13 @@ def _raster_segments(ir,center,height,record,segments,image=None):
             if abs(float(center[1-axis]-a[1-axis]))<height*.3:continue
             if np.linalg.norm(b-a)<6:continue
             # Do not add a competing detection of an existing vector line.
-            if any(np.linalg.norm(s['b']-s['a'])>np.linalg.norm(b-a)*.8 and
-                   max(_point_segment(p,s['a'],s['b']) for p in (a,b))<3 for s in segments):continue
+            eligible=lengths2>float((b-a)@(b-a))*.64
+            if eligible.any():
+                delta=np.array([a,b])[:,None,:]-starts[eligible]
+                fraction=np.clip(np.einsum('kij,ij->ki',delta,vectors[eligible])/lengths2[eligible],0,1)
+                residual=delta-fraction[:,:,None]*vectors[eligible]
+                distances2=np.einsum('kij,kij->ki',residual,residual)
+                if (distances2.max(axis=0)<9).any():continue
             # Trim arrow widths to the two nearest measured witness crossings.
             v=(b-a)/np.linalg.norm(b-a);crossings=[]
             for s in segments:
@@ -146,6 +179,17 @@ def _partition_segments(segments,witnesses,height,center=None):
 
 
 def dimension_candidates(ir):
+    cache=_candidate_cache.get()
+    if cache is None:return _compute_dimension_candidates(ir)
+    key=_candidate_key(ir)
+    if key not in cache:
+        result=_compute_dimension_candidates(ir)
+        if len(cache)>=12:cache.pop(next(iter(cache)))
+        cache[key]=copy.deepcopy(result)
+    return copy.deepcopy(cache[key])
+
+
+def _compute_dimension_candidates(ir):
     segments=_segments(ir)
     witness_segments=_segments(ir,include_centerlines=True)
     texts=[(i,e) for i,e in enumerate(ir.entities) if e.type=='text']
