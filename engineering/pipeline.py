@@ -29,10 +29,11 @@ from engineering.review import review_geometry
 from engineering.dimensions import add_native_dimensions
 from engineering.coordinates import CONTRACT
 from engineering.artifacts import review_artifacts
+from engineering.linework import review_linework
 from tools.image_io import imread, imwrite
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "engineering-cad-v6-local-repair"
+VERSION = "engineering-cad-v7-linework-review"
 
 
 def source_version():
@@ -228,7 +229,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
     report['ai_text_review'] = ai_report
     report['ocr_before_review'] = raw_ocr
     source_image = imread(image)
-    irs = {name: review_artifacts(review_geometry(ir, source_image),source_image) for name, ir in irs.items()}
+    irs = {name: review_artifacts(review_linework(review_geometry(ir, source_image),source_image),source_image) for name, ir in irs.items()}
     for ir in irs.values():
         ir.meta['cad_structure'] = structure_report(ir.entities)
     if use_ai_review:
@@ -256,6 +257,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         scores[name]['native_dimensions'] = dimensions['native_dimensions']
         scores[name]['native_leaders'] = dimensions['native_leaders']
         scores[name]['artifact_review'] = ir.meta.get('artifact_review',{})
+        scores[name]['linework_review'] = ir.meta.get('linework_review',{})
         scores[name]['geometry_review'] = ir.meta['geometry_review']
         scores[name].update(proposal=name, ir=str(out / f"{name}.json"))
     if legacy_proposals:
@@ -307,6 +309,7 @@ def run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                   template_count=len(features), selected_templates=(len(irs[picked].meta.get('features', [])) if picked in irs else 0),
                   units="pixels", semantic_enabled=use_semantic)
     report['native_dimensions'] = irs[picked].meta.get('native_dimensions', {}) if picked in irs else {}
+    report['linework_review'] = irs[picked].meta.get('linework_review', {}) if picked in irs else {}
     report['dimension_association'] = irs[picked].meta.get('dimension_association', {'status':'disabled'}) if picked in irs else {}
     report['coordinate_contract'] = dict(CONTRACT)
     report['unconfirmed_discoveries'] = [a for a in ocr if a.get('discovery') and a.get('review_status') != 'ai_reviewed']
