@@ -31,11 +31,11 @@ from engineering.coordinates import CONTRACT
 from engineering.artifacts import review_artifacts
 from engineering.linework import review_linework
 from engineering.dash_axes import review_dash_axes
-from engineering.hatching import add_native_hatches
+from engineering.hatching import add_native_hatches, finalize_hatches
 from tools.image_io import imread, imwrite
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "engineering-cad-v9-progress-performance"
+VERSION = "engineering-cad-v10-final-section-hatches"
 
 
 def source_version():
@@ -66,7 +66,7 @@ def safe_ocr(image, diagnostic_dir=None):
         return [], f"OCR unavailable: {type(exc).__name__}"
 
 
-def write_ir(ir, target, progress=None):
+def write_ir(ir, target, progress=None, *, final_hatches=False):
     doc = ir_to_doc(ir)
     doc.units = 0  # DXF $INSUNITS=0: pixel coordinates must not pretend to be mm.
     # CAD lineweights describe plotted pen widths, never source pixel thickness.
@@ -79,14 +79,16 @@ def write_ir(ir, target, progress=None):
         doc.layers.get(layer).dxf.linetype = name
     configure_native_text(doc, ir)
     original_entities = list(doc.modelspace())
+    ir.meta['cad_source_handles'] = [e.dxf.handle for e in original_entities]
     for entity, rgb in zip(doc.modelspace(), ir.meta.get("stroke_colors_rgb", [])):
         if rgb is not None:
             entity.rgb = tuple(rgb)
     if progress:progress.detail('生成 CAD 原生文字、尺寸和引线')
     dimension_report = add_native_dimensions(doc, ir)
     ir.meta['native_dimensions'] = dimension_report
-    if progress:progress.detail('生成 CAD 原生剖面填充')
-    ir.meta['native_hatches'] = add_native_hatches(doc, ir, original_entities)
+    ir.meta['native_hatches'] = {'status':'deferred_until_selected_drawing_complete','native_hatches':0}
+    if final_hatches:
+        ir.meta['native_hatches'] = add_native_hatches(doc, ir, original_entities)
     doc.saveas(str(target))
     return dimension_report
 
@@ -332,6 +334,19 @@ def _run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
         report['annotations']=irs[picked].meta.get('annotations',[])
         ocr=irs[picked].meta.get('ocr',ocr)
         report['ocr']=ocr
+    # Keep scan hatch strokes throughout candidate comparison and text repair.
+    # Only the actual selected drawing receives native fills, as the last
+    # geometry operation. Scaling below transforms this completed drawing.
+    _progress.phase(9,'图形和标注已完成，最后生成剖面填充')
+    if picked in irs:
+        final=out/'final_hatched.dxf'
+        report['final_hatch_stage']=finalize_hatches(irs[picked],selected['dxf'],final)
+        selected.update(score_dxf(final,image,out/'final_hatched.png'))
+        ignore=annotation_mask(source_image.shape[:2],irs[picked].meta.get('annotations',[]))
+        selected['geometry']=compare(imread(selected['png']),source_image,ignore_mask=ignore)
+        selected['native_hatches']=report['final_hatch_stage']['native_hatches']
+        final_ir=out/'final_selected.json';final_ir.write_text(irs[picked].to_json(),encoding='utf8')
+        selected['ir']=str(final_ir)
     shutil.copy2(selected["dxf"], out / "best.dxf")
     selected["dxf"] = str(out / "best.dxf")
     # All proposals are scored in pixels, including optional generated scripts.
@@ -362,7 +377,7 @@ def _run_engineering(image, out_dir=None, *, use_ocr=True, use_templates=True,
                             'reason': 'Automatic reconstruction requires topology, text and dimension review; image score is not CAD acceptance',
                             'native_cad_application_verified': False,
                             'manufacturing_dimensions_verified': False}
-    _progress.phase(9,'确认比例并保存最终 CAD')
+    _progress.detail('确认比例并保存最终 CAD')
     from engineering.calibration import calibrate_selected
     try:
         report['calibration']=calibrate_selected(selected,ocr,out)

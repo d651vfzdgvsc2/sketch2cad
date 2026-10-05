@@ -81,7 +81,7 @@ def test_native_hatch_measured_pattern_and_unfilled_circular_island(tmp_path):
     plans=plan_hatches(ir,image)
     assert len(plans)==1 and len(plans[0]['holes'])==1
     assert plans[0]['spacing']==pytest.approx(12/math.sqrt(2),abs=.3)
-    path=tmp_path/'result.dxf';write_ir(ir,path);doc=ezdxf.readfile(path)
+    path=tmp_path/'result.dxf';write_ir(ir,path,final_hatches=True);doc=ezdxf.readfile(path)
     assert not doc.audit().has_errors
     hatch=doc.modelspace().query('HATCH')[0]
     assert len(hatch.paths)==2 and hatch.dxf.solid_fill==0
@@ -94,6 +94,7 @@ def test_unknown_blank_hole_and_open_boundary_retain_original_lines():
     ir,image=hatch_fixture(hole=False,unknown_hole=True)
     assert plan_hatches(ir,image)==[]
     ir,image=hatch_fixture(hole=False);ir.entities[0].closed=False
+    cv2.line(image,(30,180),(30,190),(255,255,255),7)
     assert plan_hatches(ir,image)==[]
 
 
@@ -135,7 +136,7 @@ def test_hatch_and_dimensions_survive_same_export_and_repeat(tmp_path):
     image=cv2.copyMakeBorder(image,0,150,0,0,cv2.BORDER_CONSTANT,value=(255,255,255))
     source=tmp_path/'source.png';imwrite(source,image);ir.meta['source']=str(source)
     for i in range(2):
-        path=tmp_path/f'{i}.dxf';report=write_ir(ir,path);doc=ezdxf.readfile(path)
+        path=tmp_path/f'{i}.dxf';report=write_ir(ir,path,final_hatches=True);doc=ezdxf.readfile(path)
         assert report['native_dimensions']==1
         assert len(doc.modelspace().query('HATCH'))==1
         assert len(doc.modelspace().query('DIMENSION'))==1
@@ -147,7 +148,7 @@ def test_mixed_polyline_keeps_non_hatch_edge(tmp_path):
     old=ir.entities[8];ir.entities[8]=Entity(type='polyline',points=[old.start,old.end,(old.end[0],old.end[1]+5)])
     cv2.line(image,tuple(map(int,old.end)),(int(old.end[0]),int(old.end[1]+5)),(0,0,0),1)
     source=tmp_path/'source.png';imwrite(source,image);ir.meta['source']=str(source)
-    path=tmp_path/'mixed.dxf';write_ir(ir,path);doc=ezdxf.readfile(path)
+    path=tmp_path/'mixed.dxf';write_ir(ir,path,final_hatches=True);doc=ezdxf.readfile(path)
     assert len(doc.modelspace().query('HATCH'))==1
     assert any(e.dxf.start.isclose((old.end[0],ir.height-old.end[1],0)) and
                e.dxf.end.isclose((old.end[0],ir.height-old.end[1]-5,0)) for e in doc.modelspace().query('LINE'))
